@@ -1,0 +1,82 @@
+/* Compact hero bar with auto-cycling purple gradient background.
+   Matches the structure of /underwater so the two sides feel like
+   the same site at a glance. Three slides crossfade, one visible
+   at a time. Respects prefers-reduced-motion. */
+.hero {
+  position: relative;
+  min-height: clamp(180px, 26dvh, 280px);
+  display: grid;
+  align-items: center;
+  overflow: hidden;
+  isolation: isolate;
+  background: #14082a; /* fallback */
+  border-bottom: 1px solid var(--line);
+}
+
+.heroBg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.heroSlide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  animation: cycle 18s ease-in-out infinite;
+}
+.heroSlide:nth-child(1) { animation-delay: 0s; }
+.heroSlide:nth-child(2) { animation-delay: 6s; }
+.heroSlide:nth-child(3) { animation-delay: 12s; }
+
+@keyframes cycle {
+  0%   { opacity: 0; }
+  4%   { opacity: 1; }
+  33%  { opacity: 1; }
+  37%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.heroSlide:nth-child(1) {
+  background:
+    radial-gradient(ellipse 70% 60% at 70% 30%, #6a3a9c 0%, transparent 60%),
+    radial-gradient(ellipse 60% 80% at 20% 80%, #8a4abc 0%, transparent 60%),
+    radial-gradient(ellipse 90% 70% at 50% 50%, #2a1850 0%, #14082a 80%);
+}
+.heroSlide:nth-child(2) {
+  background:
+    radial-gradient(ellipse 60% 50% at 30% 20%, #7a4aac 0%, transparent 60%),
+    radial-gradient(ellipse 70% 70% at 80% 80%, #5a2a8c 0%, transparent 60%),
+    radial-gradient(ellipse 90% 60% at 40% 50%, #1a0a2e 0%, #0e0420 80%);
+}
+.heroSlide:nth-child(3) {
+  background:
+    radial-gradient(ellipse 65% 60% at 50% 25%, #5a3a8a 0%, transparent 60%),
+    radial-gradient(ellipse 55% 70% at 80% 70%, #4a2a7a 0%, transparent 60%),
+    radial-gradient(ellipse 90% 60% at 60% 60%, #1a0a2e 0%, #14082a 80%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroSlide {
+    animation: none;
+    opacity: 0;
+  }
+  .heroSlide:nth-child(1) { opacity: 1; }
+}
+
+.heroInner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-block: 28px;
+}
+
+.heroTitle {
+  font-size: clamp(28px, 4.5vw, 56px);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0;
+}

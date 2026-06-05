@@ -1,0 +1,116 @@
+.hub {
+  min-height: 100dvh;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* Split container */
+.split {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr 1fr;
+  width: 100%;
+  min-height: 100dvh;
+}
+@media (min-width: 860px) {
+  .split {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr;
+  }
+}
+
+/* Each half */
+.half {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  isolation: isolate;
+  min-height: 50dvh;
+  cursor: pointer;
+  transition: transform 700ms cubic-bezier(0.2, 0.7, 0.2, 1), filter 500ms ease;
+  will-change: transform;
+}
+@media (min-width: 860px) {
+  .half { min-height: 100dvh; }
+}
+
+/* Hover: clicked half slightly scales, other dims */
+@media (hover: hover) {
+  .half:hover { transform: scale(1.015); }
+  .split:hover .half:not(:hover) {
+    filter: brightness(0.6) saturate(0.85);
+    transform: scale(0.985);
+  }
+}
+
+.halfBg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  transition: transform 1200ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.half:hover .halfBg { transform: scale(1.04); }
+
+/* Underwater half — deep teal/blue */
+.halfUnderwater .halfBg {
+  background:
+    radial-gradient(ellipse 80% 60% at 30% 30%, #1a8a8a 0%, transparent 60%),
+    radial-gradient(ellipse 70% 80% at 80% 80%, #2a5a7a 0%, transparent 60%),
+    radial-gradient(ellipse 90% 60% at 50% 50%, #0c2733 0%, #06151c 80%);
+}
+
+/* Portrait half — purple gradient */
+.halfPortrait .halfBg {
+  background:
+    radial-gradient(ellipse 70% 60% at 70% 30%, #6a3a9c 0%, transparent 60%),
+    radial-gradient(ellipse 60% 80% at 20% 80%, #8a4abc 0%, transparent 60%),
+    radial-gradient(ellipse 90% 70% at 50% 50%, #2a1850 0%, #14082a 80%);
+}
+
+/* Content */
+.halfContent {
+  position: relative;
+  z-index: 1;
+  max-width: 600px;
+  padding: 80px 32px;
+  text-align: left;
+  transition: transform 800ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@media (min-width: 860px) {
+  .halfContent { padding: 0 56px; }
+}
+.half:hover .halfContent { transform: translateY(-4px); }
+
+.halfTitle {
+  font-family: var(--ff-display);
+  font-size: clamp(48px, 8vw, 104px);
+  line-height: 0.95;
+  letter-spacing: -0.015em;
+  color: #fff;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.halfHint {
+  position: absolute;
+  bottom: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.78);
+  text-decoration: none;
+  z-index: 1;
+  white-space: nowrap;
+  transition: color 200ms, letter-spacing 200ms;
+}
+.halfHint:hover { color: #fff; letter-spacing: 0.22em; }
+.halfPortrait .halfHint { color: rgba(255, 255, 255, 0.82); }
+
+@media (max-width: 859px) {
+  .halfHint { display: none; }
+}

@@ -1,0 +1,80 @@
+/* Compact hero bar with auto-cycling gradient background.
+   Three slides crossfade, one visible at a time. Respects prefers-reduced-motion. */
+.hero {
+  position: relative;
+  min-height: clamp(180px, 26dvh, 280px);
+  display: grid;
+  align-items: center;
+  overflow: hidden;
+  isolation: isolate;
+  background: #06151c; /* fallback */
+  border-bottom: 1px solid var(--line);
+}
+
+.heroBg {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+}
+
+.heroSlide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  animation: cycle 18s ease-in-out infinite;
+}
+.heroSlide:nth-child(1) { animation-delay: 0s; }
+.heroSlide:nth-child(2) { animation-delay: 6s; }
+.heroSlide:nth-child(3) { animation-delay: 12s; }
+
+@keyframes cycle {
+  0%   { opacity: 0; }
+  4%   { opacity: 1; }
+  33%  { opacity: 1; }
+  37%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.heroSlide:nth-child(1) {
+  background:
+    radial-gradient(ellipse 80% 60% at 30% 30%, #1a8a8a 0%, transparent 60%),
+    radial-gradient(ellipse 70% 80% at 80% 80%, #2a5a7a 0%, transparent 60%),
+    radial-gradient(ellipse 90% 60% at 50% 50%, #0c2733 0%, #06151c 80%);
+}
+.heroSlide:nth-child(2) {
+  background:
+    radial-gradient(ellipse 60% 50% at 70% 20%, #1a4858 0%, transparent 60%),
+    radial-gradient(ellipse 80% 70% at 20% 80%, #2a7a8a 0%, transparent 60%),
+    radial-gradient(ellipse 90% 60% at 60% 50%, #082030 0%, #04101a 80%);
+}
+.heroSlide:nth-child(3) {
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 30%, #2a8a8a 0%, transparent 60%),
+    radial-gradient(ellipse 60% 70% at 80% 70%, #0a3a5a 0%, transparent 60%),
+    radial-gradient(ellipse 90% 60% at 40% 60%, #0c2733 0%, #06151c 80%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroSlide {
+    animation: none;
+    opacity: 0;
+  }
+  .heroSlide:nth-child(1) { opacity: 1; }
+}
+
+.heroInner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-block: 28px;
+}
+
+.heroTitle {
+  font-size: clamp(28px, 4.5vw, 56px);
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0;
+}

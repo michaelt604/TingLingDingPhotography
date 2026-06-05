@@ -1,0 +1,8 @@
+# Cloudflare Pages — URL rewrites
+# All routes hit the static index.html. The exported site uses directory
+# format (trailingSlash: true), so most paths resolve naturally. These
+# are safety nets for non-trailing-slash variants and clean URLs.
+
+# Trailing-slash variants
+/underwater   /underwater/   301
+/portraits    /portraits/    301

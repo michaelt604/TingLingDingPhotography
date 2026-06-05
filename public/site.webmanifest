@@ -1,0 +1,17 @@
+{
+  "name": "TingLingDing Photography",
+  "short_name": "TingLingDing",
+  "description": "Underwater, nature, and portrait photography.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#06151c",
+  "theme_color": "#06151c",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
