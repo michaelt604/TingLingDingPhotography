@@ -27,19 +27,12 @@ export default function PortraitsPage() {
             <div className={styles.heroSlide} />
             <div className={styles.heroSlide} />
           </div>
-
-          <div className={`container ${styles.heroInner}`}>
-            <h1 className={`display ${styles.heroTitle}`}>
-              Honest portraits, made on request.
-            </h1>
-          </div>
         </section>
 
         {/* INSTAGRAM — main content */}
         <InstagramFeed
           handle={IG_HANDLE}
           profileUrl={IG_PROFILE_URL}
-          bookingNote="Currently booking for August 2026."
           side="portraits"
         />
       </main>

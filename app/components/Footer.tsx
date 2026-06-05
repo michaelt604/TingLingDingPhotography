@@ -37,7 +37,7 @@ export function Footer({ side = 'hub', igHandle, igProfileUrl }: Props) {
           )}
 
           <p className={styles.copy}>
-            © {year} TingLingDing. Built with care.
+            © {year} Michael Ting
           </p>
         </div>
       </div>
