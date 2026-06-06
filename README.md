@@ -302,3 +302,9 @@ Most tweaks live in:
       add `next/image` everywhere)
 - [ ] Optional: upgrade to SSR with `@cloudflare/next-on-pages` if you
       ever want a real contact-form backend instead of `mailto:`
+
+## Auto-deploy
+
+Pushing to `main` triggers the GitHub Actions workflow at
+`.github/workflows/deploy.yml`, which runs `next build` and deploys the
+static `out/` directory to Cloudflare Pages via Direct Upload.
