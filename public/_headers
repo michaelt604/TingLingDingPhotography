@@ -7,9 +7,9 @@
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: camera=(), microphone=(), geolocation=()
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
-  # No third-party scripts; Google Fonts is stylesheet-only. connect-src
-  # is set to the IG proxy Worker — adjust if you self-host the proxy.
-  Content-Security-Policy: default-src 'self'; img-src 'self' https://*.cdninstagram.com https://*.fbcdn.net data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self' mailto:
+  # Next.js hydration needs inline scripts ('unsafe-inline' + 'unsafe-eval').
+  # Cloudflare hosts are for the Super Bot Fight Mode challenge widget.
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.cloudflare.com https://*.challenges.cloudflare.com; img-src 'self' https://*.cdninstagram.com https://*.fbcdn.net data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.workers.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self' mailto:
 
 # Cache static assets aggressively
 /_next/static/*
