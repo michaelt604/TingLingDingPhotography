@@ -40,3 +40,4 @@ next-env.d.ts.bak
 preview/                  # self-review screenshots — local-only, not in version control
 moodboard/                # visual reference from the design phase — keep locally
 playwright-bridge-deps/   # if I ever need a separate bridge directory
+.worktrees/               # git worktree checkouts — local-only, never commit

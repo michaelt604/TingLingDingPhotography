@@ -211,9 +211,15 @@ img { color: transparent; }
   outline: 2px solid var(--ink);
   outline-offset: 2px;
 }
-/* Make the main target focusable but invisible (no outline flash) */
+/* Make the main target focusable. Strip the ring for mouse jumps
+   (the user just used the skip link, no need to flash a ring), but
+   keep it for keyboard navigation so the user knows where they landed. */
 #main:focus { outline: none; }
-#main:focus-visible { outline: none; }
+#main:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
 
 /* ---------- Reduced motion ---------- */
 @media (prefers-reduced-motion: reduce) {

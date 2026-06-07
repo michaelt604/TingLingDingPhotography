@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   description:
     'Underwater and nature photography by TingLingDing. Cinematic, deep, full of blue.',
   alternates: { canonical: '/underwater/' },
+  openGraph: {
+    url: '/underwater/',
+  },
 };
 
 const IG_HANDLE = 'tinglingdingphotography';
@@ -22,7 +25,7 @@ export default function UnderwaterPage() {
       <main id="main" tabIndex={-1}>
         {/* COMPACT HERO BAR with auto-cycling gradient background.
             Title text is per your call, no buttons. "Get in touch" lives in the header. */}
-        <section className={styles.hero} aria-label="Header">
+        <section className={styles.hero} aria-label="Hero">
           <div className={styles.heroBg} aria-hidden="true">
             <div className={styles.heroSlide} />
             <div className={styles.heroSlide} />

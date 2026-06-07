@@ -8,8 +8,6 @@ compatibility_flags = ["nodejs_compat"]
 #   IG_ACCESS_TOKEN_UNDERWATER
 #   IG_USER_ID_PORTRAITS
 #   IG_ACCESS_TOKEN_PORTRAITS
-# Optional:
-#   ALLOWED_ORIGIN  (defaults to "*"; lock to your domain in prod)
 #
 # Example:
 #   wrangler secret put IG_USER_ID_UNDERWATER
@@ -18,3 +16,10 @@ compatibility_flags = ["nodejs_compat"]
 #   wrangler secret put IG_ACCESS_TOKEN_PORTRAITS
 #
 # Then: wrangler deploy
+
+# Production environment — locks CORS to the real site origin so the
+# proxy can't be abused from arbitrary origins (which would burn the
+# IG rate limit). Override locally with:
+#   wrangler dev --var ALLOWED_ORIGIN:http://localhost:3000
+[env.production]
+vars = { ALLOWED_ORIGIN = "https://tinglingdingphotography.com" }

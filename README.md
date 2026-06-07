@@ -287,7 +287,7 @@ Most tweaks live in:
 | Hero gradient (per side) | `app/underwater/page.module.css` and `app/portraits/page.module.css` (3 slide variants) |
 | Hub gradient colors | `app/page.module.css` (`.halfUnderwater .halfBg` and `.halfPortrait .halfBg`) |
 | Fonts | `app/layout.tsx` (Google Fonts link) + `app/globals.css` (`--ff-display`, `--ff-body`, etc.) |
-| Self-review screenshots | Daemon MCP bridge at `app/mcp-bridge.cjs` — registered as "playwright" in `~/.mavis/mcp/mcp.json` |
+| Self-review screenshots | Daemon MCP bridge at `tools/mcp-bridge.cjs` — registered as "playwright" in `~/.mavis/mcp/mcp.json` |
 | Cloudflare Worker | `workers/ig-proxy/` — deploy with `wrangler deploy` after setting secrets |
 
 ---

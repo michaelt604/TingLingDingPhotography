@@ -3,10 +3,9 @@
  * tld-mcp-bridge.cjs
  *
  * A minimal MCP stdio server that wraps the Playwright library directly.
- * Built because the official @playwright/mcp package exceeds the daemon's
- * stdio connection timeout (~200ms) during initialization, while a plain
- * Node script that responds immediately to JSON-RPC works fine (matrix
- * proves the pattern).
+ * Built because the official @playwright/mcp package can be slow to
+ * initialize (~200ms+) and a plain Node script that responds to JSON-RPC
+ * immediately is more reliable.
  *
  * Tools:
  *   - browser_navigate  { url }
@@ -15,7 +14,7 @@
  *   - browser_resize    { width, height }
  *
  * Usage (registered in ~/.mavis/mcp/mcp.json):
- *   node C:\...\app\mcp-bridge.cjs
+ *   node C:\...\tools\mcp-bridge.cjs
  *
  * Keep this dead simple. If you need more tools, add them — but
  * prefer fewer, more powerful tools over many small ones.

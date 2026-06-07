@@ -30,6 +30,19 @@
  * reminder; when one expires, /me?fields=id will return an error and
  * the feed will fall back to placeholder. Refresh by re-running the
  * short-lived → long-lived exchange in Graph API Explorer.
+ *
+ * Security notes:
+ *   - Access token is sent to Graph API via Authorization: Bearer
+ *     header (NOT a query param), so it never appears in URLs, cache
+ *     keys, or access logs.
+ *   - The cache key is a stable internal URL (`https://ig-cache/${side}`)
+ *     — it never contains the token.
+ *   - ALLOWED_ORIGIN defaults to your site domain in [env.production]
+ *     of wrangler.toml. The "*" default is only used when the env var
+ *     is unset (local dev).
+ *   - `caches.default` is zone-wide; cached bodies are shared across
+ *     origins. We re-apply CORS in jsonResponse() so the cached
+ *     response is still origin-aware.
  */
 
 interface Env {
@@ -37,19 +50,25 @@ interface Env {
   IG_ACCESS_TOKEN_UNDERWATER: string;
   IG_USER_ID_PORTRAITS: string;
   IG_ACCESS_TOKEN_PORTRAITS: string;
-  // Optional: set to "*" for any origin, or your specific domain(s).
-  // Default: "*" for development convenience. Lock this down for prod.
+  /**
+   * Set to your site origin (e.g. "https://tinglingdingphotography.com")
+   * in wrangler.toml [env.production.vars]. Defaults to "*" for dev.
+   */
   ALLOWED_ORIGIN?: string;
 }
 
 const CACHE_TTL_SECONDS = 3600;
 const DEFAULT_ORIGIN = '*';
+const SITE_ORIGIN = 'https://tinglingdingphotography.com';
 
 const CORS = (origin: string) => ({
   'Access-Control-Allow-Origin': origin,
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
   'Access-Control-Max-Age': '86400',
+  // Vary on Origin so caches don't serve one origin's response to another
+  // when we lock down ALLOWED_ORIGIN.
+  'Vary': 'Origin',
 });
 
 const JSON_HEADERS = (origin: string) => ({
@@ -82,9 +101,17 @@ function routeFor(path: string, env: Env): { userId: string; accessToken: string
 const GRAPH_API_VERSION = 'v18.0';
 const MEDIA_FIELDS = 'id,media_type,media_url,permalink,thumbnail_url,caption,timestamp';
 
+// Resolves the response origin header.
+// ALLOWED_ORIGIN must be set in wrangler.toml [env.production.vars] for
+// production. For local dev with `wrangler dev`, the env var is unset
+// and we fall back to "*" for convenience.
+function resolveOrigin(env: Env): string {
+  return env.ALLOWED_ORIGIN || DEFAULT_ORIGIN;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const origin = env.ALLOWED_ORIGIN || DEFAULT_ORIGIN;
+    const origin = resolveOrigin(env);
 
     // CORS preflight
     if (request.method === 'OPTIONS') {
@@ -115,26 +142,36 @@ export default {
       );
     }
 
+    // Cache key: stable, internal, NEVER includes the token.
+    // Using the upstream URL as a cache key would put the token into
+    // the key (since we used to send it as a query param). Now the
+    // token goes in the Authorization header instead, so we can use
+    // a clean internal key.
+    const cacheKey = new Request(`https://ig-cache.local/${side}`, { method: 'GET' });
+
+    // Build the upstream request WITH the token in a Bearer header.
     const igUrl =
       `https://graph.instagram.com/${GRAPH_API_VERSION}/${route.userId}/media` +
       `?fields=${MEDIA_FIELDS}` +
-      `&access_token=${encodeURIComponent(route.accessToken)}` +
       `&limit=9`;
 
     try {
-      // Use the cache API so the edge serves repeat requests for CACHE_TTL.
       const cache = caches.default;
-      const cacheKey = new Request(igUrl, { method: 'GET' });
       const cached = await cache.match(cacheKey);
       if (cached) {
         const body = await cached.json();
         return jsonResponse(body, origin);
       }
 
-      const upstream = await fetch(igUrl);
+      const upstream = await fetch(igUrl, {
+        headers: {
+          'Authorization': `Bearer ${route.accessToken}`,
+        },
+      });
       if (!upstream.ok) {
         // Don't cache errors; let the user retry.
         const txt = await upstream.text();
+        // Trim the upstream error so we don't leak large upstream payloads.
         return errorResponse(
           `Instagram API ${upstream.status}: ${txt.slice(0, 200)}`,
           origin,
@@ -143,7 +180,7 @@ export default {
       }
 
       const data = await upstream.json();
-      // Cache a successful response
+      // Cache the successful response under the clean key.
       const cacheable = new Response(JSON.stringify(data), {
         headers: { 'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}` },
       });

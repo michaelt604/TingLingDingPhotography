@@ -20,7 +20,7 @@
   }
 }
 
-/* Each half */
+/* Each half — a div so the IG handle can be a sibling <a>, not a descendant. */
 .half {
   position: relative;
   display: grid;
@@ -34,6 +34,14 @@
 }
 @media (min-width: 860px) {
   .half { min-height: 100dvh; }
+}
+
+/* The "enter this side" link — absolute, covers the whole half, sits
+   below the IG hint so the hint captures its own clicks. */
+.halfMainLink {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
 }
 
 /* Hover: clicked half slightly scales, other dims */
@@ -77,6 +85,10 @@
   padding: 80px 32px;
   text-align: left;
   transition: transform 800ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  /* The .halfMainLink covers the whole half and is what navigates.
+     Without pointer-events: none, the h1 (same z-index, later in DOM)
+     would catch the click and not navigate. */
+  pointer-events: none;
 }
 @media (min-width: 860px) {
   .halfContent { padding: 0 56px; }
@@ -104,7 +116,7 @@
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.78);
   text-decoration: none;
-  z-index: 1;
+  z-index: 2;
   white-space: nowrap;
   transition: color 200ms, letter-spacing 200ms;
 }

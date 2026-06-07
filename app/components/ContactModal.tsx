@@ -69,8 +69,10 @@ export function ContactModal({ open, onClose }: Props) {
 
       if (focusable.length === 0) return;
 
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      // Length > 0 guarantees these are defined, but with
+      // noUncheckedIndexedAccess TS doesn't know that.
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
       const active = document.activeElement as HTMLElement;
 
       if (e.shiftKey) {

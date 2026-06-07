@@ -5,6 +5,49 @@ import styles from './Contact.module.css';
 
 const TO_EMAIL = 'tinglingdingphotography@gmail.com';
 
+interface FieldProps {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  textarea?: boolean;
+  required?: boolean;
+  autoComplete?: string;
+  placeholder?: string;
+}
+
+function Field({ id, label, value, onChange, type = 'text', textarea, required, autoComplete, placeholder }: FieldProps) {
+  return (
+    <div className={styles.field}>
+      <label htmlFor={id} className={`mono ${styles.label}`}>{label}{required ? ' *' : ''}</label>
+      {textarea ? (
+        <textarea
+          id={id}
+          name={id}
+          className={styles.input}
+          rows={6}
+          value={value}
+          required={required}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : (
+        <input
+          id={id}
+          name={id}
+          type={type}
+          className={styles.input}
+          value={value}
+          required={required}
+          autoComplete={autoComplete}
+          placeholder={placeholder}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
 interface Props {
   heading?: string;
   /** Side the contact section is on — only affects the placeholder text */
@@ -35,16 +78,15 @@ export function Contact({
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    const subject = (topic || 'Inquiry from your photography site').trim();
+    const subject = (topic.trim() || 'Inquiry from your photography site').trim();
 
-    const lines = [
-      name ? `Name: ${name.trim()}` : null,
-      email ? `Email: ${email.trim()}` : null,
-      '',
-      message.trim(),
-    ].filter((line) => line !== null) as string[];
+    // Build the body in the right order, dropping empty fields.
+    const parts: string[] = [];
+    if (name.trim()) parts.push(`Name: ${name.trim()}`);
+    if (email.trim()) parts.push(`Email: ${email.trim()}`);
+    if (message.trim()) parts.push('', message.trim());
+    const body = parts.join('\n');
 
-    const body = lines.join('\n');
     const href =
       `mailto:${TO_EMAIL}` +
       `?subject=${encodeURIComponent(subject)}` +
@@ -124,48 +166,5 @@ export function Contact({
         </div>
       </div>
     </section>
-  );
-}
-
-interface FieldProps {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-  textarea?: boolean;
-  required?: boolean;
-  autoComplete?: string;
-  placeholder?: string;
-}
-
-function Field({ id, label, value, onChange, type = 'text', textarea, required, autoComplete, placeholder }: FieldProps) {
-  return (
-    <div className={styles.field}>
-      <label htmlFor={id} className={`mono ${styles.label}`}>{label}{required ? ' *' : ''}</label>
-      {textarea ? (
-        <textarea
-          id={id}
-          name={id}
-          className={styles.input}
-          rows={6}
-          value={value}
-          required={required}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      ) : (
-        <input
-          id={id}
-          name={id}
-          type={type}
-          className={styles.input}
-          value={value}
-          required={required}
-          autoComplete={autoComplete}
-          placeholder={placeholder}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      )}
-    </div>
   );
 }

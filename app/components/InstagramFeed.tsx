@@ -8,12 +8,8 @@ interface Props {
   handle: string;
   /** Profile URL on instagram.com */
   profileUrl: string;
-  /** Set true once a real widget embed is pasted in below */
-  feedActive?: boolean;
   /** When the widget is not active, render this many placeholder tiles */
   placeholderCount?: number;
-  /** Optional small status line shown next to the @handle (e.g. "Currently booking for August 2026.") */
-  bookingNote?: string;
   /**
    * Which side this is — used to route the proxy fetch.
    * Set automatically by the page; the Worker uses it to pick the
@@ -45,55 +41,20 @@ interface IGPost {
  * This component calls our own Cloudflare Worker (CORS-safe, holds
  * the access token server-side, edge-cached) to get the real feed.
  * See workers/ig-proxy/ + README "Instagram feed via Cloudflare Worker".
- *
- * Three modes:
- *   1. feedActive=true → render the user-pasted widget embed (legacy)
- *   2. NEXT_PUBLIC_IG_PROXY_URL is set → fetch from the Worker
- *   3. else → styled placeholder grid
  */
 export function InstagramFeed({
   handle,
   profileUrl,
-  feedActive = false,
   placeholderCount = 9,
-  bookingNote,
   side,
 }: Props) {
+  const proxyUrl = process.env.NEXT_PUBLIC_IG_PROXY_URL;
   const [posts, setPosts] = useState<IGPost[]>([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Path: user-pasted widget embed (SnapWidget, Behold, Curator, etc.)
-  if (feedActive) {
-    return (
-      <section className={styles.feed} id="instagram" aria-label={`Latest posts from @${handle}`}>
-        <div className="container">
-          <FeedHeader handle={handle} profileUrl={profileUrl} bookingNote={bookingNote} />
-          <div className={styles.embed}>
-            {/* ─── Paste your widget embed here, e.g. SnapWidget ───
-              <script src="https://snapwidget.com/js/snapwidget.js"></script>
-              <iframe
-                src="https://snapwidget.com/embed/YOUR_WIDGET_ID"
-                className="snapwidget-widget"
-                allowTransparency
-                frameBorder={0}
-                scrolling="no"
-                style={{ border: 'none', overflow: 'hidden', width: '100%', height: 540 }}
-              />
-            ──────────────────────────────────────────── */}
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  const proxyUrl = process.env.NEXT_PUBLIC_IG_PROXY_URL;
-
-  // Path: fetch from our Cloudflare Worker proxy
   useEffect(() => {
     if (!proxyUrl) return; // No proxy URL configured — show placeholder
     let cancelled = false;
-    setLoading(true);
     setError(null);
     const url = `${proxyUrl.replace(/\/$/, '')}/${side}`;
     fetch(url)
@@ -111,9 +72,6 @@ export function InstagramFeed({
       })
       .catch((e) => {
         if (!cancelled) setError(String(e?.message || e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
@@ -126,7 +84,7 @@ export function InstagramFeed({
   return (
     <section className={styles.feed} id="instagram" aria-label={`Latest posts from @${handle}`}>
       <div className="container">
-        <FeedHeader handle={handle} profileUrl={profileUrl} bookingNote={bookingNote} />
+        <FeedHeader handle={handle} profileUrl={profileUrl} />
 
         {showRealPosts ? (
           <div className={styles.grid}>
@@ -152,16 +110,12 @@ export function InstagramFeed({
             })}
           </div>
         ) : (
-          <div className={styles.placeholder} aria-hidden="true">
-            <p className={styles.placeholderNote}>
-              {error ? (
-                <>Instagram feed unavailable: {error}</>
-              ) : (
-                <>
-                  Live feed not connected — see <code>app/components/InstagramFeed.tsx</code>
-                </>
-              )}
-            </p>
+          <div className={styles.placeholder}>
+            {process.env.NODE_ENV !== 'production' && error && (
+              <p className={styles.placeholderNote}>
+                Instagram feed unavailable: {error}
+              </p>
+            )}
             <div className={styles.grid}>
               {tiles.map((n) => (
                 <a
@@ -185,10 +139,9 @@ export function InstagramFeed({
 interface FeedHeaderProps {
   handle: string;
   profileUrl: string;
-  bookingNote?: string;
 }
 
-function FeedHeader({ handle, profileUrl, bookingNote }: FeedHeaderProps) {
+function FeedHeader({ handle, profileUrl }: FeedHeaderProps) {
   return (
     <header className={styles.head}>
       <a
@@ -209,9 +162,6 @@ function FeedHeader({ handle, profileUrl, bookingNote }: FeedHeaderProps) {
           <path d="M7 7h10v10" />
         </svg>
       </a>
-      {bookingNote && (
-        <p className={styles.booking} aria-label="Booking status">{bookingNote}</p>
-      )}
     </header>
   );
 }

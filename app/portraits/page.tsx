@@ -9,6 +9,9 @@ export const metadata: Metadata = {
   description:
     'Portrait photography by TingLingDing. Intimate, considered, made for faces.',
   alternates: { canonical: '/portraits/' },
+  openGraph: {
+    url: '/portraits/',
+  },
 };
 
 const IG_HANDLE = 'tinglingdingportraits';
@@ -20,8 +23,12 @@ export default function PortraitsPage() {
       <SiteNav current="portraits" />
 
       <main id="main" tabIndex={-1}>
+        {/* Visually-hidden h1 for SEO + screen readers. The hero bar is
+            a visual-only element; the page still needs a real heading. */}
+        <h1 className={styles.srOnly}>Portraits</h1>
+
         {/* COMPACT HERO BAR with auto-cycling purple gradient — matches /underwater structure. */}
-        <section className={styles.hero} aria-label="Header">
+        <section className={styles.hero} aria-label="Hero">
           <div className={styles.heroBg} aria-hidden="true">
             <div className={styles.heroSlide} />
             <div className={styles.heroSlide} />

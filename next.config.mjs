@@ -4,6 +4,9 @@ const nextConfig = {
   // To upgrade to SSR later, remove this line and add the @cloudflare/next-on-pages
   // adapter.
   output: 'export',
+  // Pin the workspace root so Next doesn't pick a parent lockfile
+  // (silences the "multiple lockfiles" warning on Windows).
+  outputFileTracingRoot: import.meta.dirname,
   trailingSlash: true,
   images: {
     unoptimized: true,
