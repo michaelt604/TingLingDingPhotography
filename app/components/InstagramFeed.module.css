@@ -89,16 +89,39 @@
   overflow: hidden;
   background: var(--bg-2);
   border: 1px solid var(--line-soft);
-  transition: transform 280ms ease, box-shadow 280ms ease, border-color 200ms;
+  /*
+   * Hover feedback is intentionally non-transformative. Animating
+   * `transform` on the tile (or its child image) can cause the
+   * cursor to briefly leave the moved bounds and re-enter, which
+   * loops `:hover` and produces visible flicker. Border + shadow
+   * changes do not shift the hit box, so the hover state stays
+   * rock-solid while still giving the user a clear affordance.
+   */
+  transition: border-color 200ms ease, box-shadow 200ms ease;
   display: block;
 }
 @media (hover: hover) {
   .tile:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--shadow);
     border-color: var(--accent);
+    box-shadow: var(--shadow);
   }
-  .tile:hover .tileImage { transform: scale(1.04); }
+}
+/*
+ * Next/Image with `fill` renders the underlying <img> as an absolutely
+ * positioned element that fills its nearest positioned ancestor (the
+ * tileImageButton). We pin it explicitly so it can't stretch the
+ * image — `object-fit: cover` preserves the natural aspect ratio by
+ * cropping, never squishing, regardless of the tile's computed size.
+ */
+.tileImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Lift onto its own compositor layer so any future animation here
+   * runs on the GPU without triggering layout on the parent tile. */
+  will-change: transform;
 }
 
 /*
@@ -324,14 +347,9 @@
     max-width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
     max-height: calc(100dvh - 128px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   }
-  .lightboxClose {
-    inset-block-start: max(8px, env(safe-area-inset-top, 0px));
-    inset-inline-end: max(8px, env(safe-area-inset-right, 0px));
-  }
 }
-
 @media (prefers-reduced-motion: reduce) {
-  .tile:hover .tileImage,
+  .tile,
   .carouselButton,
   .lightbox,
   .lightboxInstagram,
