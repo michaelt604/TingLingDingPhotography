@@ -8,6 +8,7 @@ import {
   resolveGraphApiVersion,
   resolveOrigin,
   type Env,
+  validateCursor,
 } from '../src/index.ts';
 import worker from '../src/index.ts';
 
@@ -142,6 +143,79 @@ const productionEnv: Env = {
   ...readyEnv,
   ALLOWED_ORIGIN: productionAllowlist,
 };
+
+test('opaque Instagram cursor round-trips through client, Worker, Graph, and cache key', async () => {
+  const cursor = 'QVFIUlN+L2FiY19kLWVmZw==';
+  const clientUrl = new URL('https://worker.test/underwater');
+  clientUrl.searchParams.set('cursor', cursor);
+
+  let upstreamUrl: URL | undefined;
+  let matchedCacheKey: Request | undefined;
+  const originalFetch = globalThis.fetch;
+  const originalCaches = Reflect.get(globalThis, 'caches');
+  Object.defineProperty(globalThis, 'caches', {
+    configurable: true,
+    value: {
+      default: {
+        match: async (key: Request) => {
+          matchedCacheKey = key;
+          return undefined;
+        },
+        put: async () => undefined,
+      },
+    },
+  });
+  globalThis.fetch = async (input) => {
+    upstreamUrl = new URL(String(input));
+    return Response.json({
+      data: [],
+      paging: {
+        next: 'https://graph.instagram.com/next?access_token=must-not-leak',
+        cursors: { after: cursor },
+      },
+    });
+  };
+
+  try {
+    const response = await worker.fetch(new Request(clientUrl), readyEnv);
+    assert.equal(response.status, 200);
+    assert.equal(clientUrl.searchParams.get('cursor'), cursor);
+    assert.equal(upstreamUrl?.searchParams.get('after'), cursor);
+    assert.ok(matchedCacheKey);
+    assert.equal(
+      decodeURIComponent(new URL(matchedCacheKey.url).pathname.split('/').at(-1) ?? ''),
+      cursor,
+    );
+    assert.deepEqual(await response.json(), { data: [], paging: { next: cursor } });
+    assert.equal(matchedCacheKey.url.includes('secret-1'), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    Object.defineProperty(globalThis, 'caches', {
+      configurable: true,
+      value: originalCaches,
+    });
+  }
+});
+
+test('cursor validation rejects URL-shaped, control, malformed, and oversized values', async () => {
+  assert.equal(validateCursor('abc+def/ghi=='), 'abc+def/ghi==');
+
+  const rejected = [
+    'https://graph.instagram.com/page?after=abc',
+    '//graph.instagram.com/page',
+    'abc\nxyz',
+    'abc%xyz',
+    'a'.repeat(257),
+    '',
+  ];
+  for (const cursor of rejected) {
+    const url = new URL('https://worker.test/underwater');
+    url.searchParams.set('cursor', cursor);
+    const response = await worker.fetch(new Request(url), readyEnv);
+    assert.equal(response.status, 400, `expected cursor to be rejected: ${JSON.stringify(cursor)}`);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  }
+});
 
 test('handler fails closed when origin configuration is missing', async () => {
   const response = await worker.fetch(new Request('https://worker.test/health'), {

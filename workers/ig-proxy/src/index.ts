@@ -17,9 +17,9 @@
  *   (`paging.cursors.after`) under a `paging.next` field in our
  *   response. Clients send it back as the `cursor` query param.
  *
- *   The cursor is validated as a short opaque token (alphanumeric
- *   plus IG's base64url alphabet, length-bounded) so it cannot be
- *   abused to inject a new URL or leak the upstream access token.
+ *   The cursor is validated as a short opaque token (standard/base64url
+ *   alphabet, length-bounded) so it cannot be abused to inject a new URL
+ *   or leak the upstream access token.
  *
  * Caches successful feed responses at the Cloudflare edge for 1 hour
  * so we don't hit the Graph API on every page load. Cache keys include
@@ -342,17 +342,16 @@ export function resolveGraphApiVersion(env: Env): string | null {
   return /^v\d+\.\d+$/.test(version) ? version : null;
 }
 
-// IG's `paging.cursors.after` tokens are short opaque strings (base64url-ish).
-// We accept the same alphabet for incoming cursors and length-bound them so
-// a malicious caller cannot smuggle a URL fragment or an access token into
-// a cache key, an upstream URL, or a response body. Returns the normalized
-// cursor or null when the value is empty, too long, or contains anything
-// outside the allowlist charset.
+// IG's `paging.cursors.after` tokens are short opaque strings using the
+// standard or URL-safe base64 alphabet. Accept both forms so URLSearchParams-
+// decoded `+`, `/`, and `=` characters round-trip unchanged, while rejecting
+// URL-shaped values, controls, and every character outside those alphabets.
+// Returns null when the value is empty, too long, or malformed.
 const MAX_CURSOR_LENGTH = 256;
 export function validateCursor(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   if (value.length === 0 || value.length > MAX_CURSOR_LENGTH) return null;
-  if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  if (value.startsWith('//') || !/^[A-Za-z0-9_+/=-]+$/.test(value)) return null;
   return value;
 }
 
@@ -363,9 +362,8 @@ export function buildCacheKey(
   cursor?: string | null,
 ): Request {
   // Use a fixed marker when no cursor is provided so the first-page cache
-  // key is stable regardless of how the URL was constructed. validateCursor
-  // restricts cursors to the URL-safe alphabet so no further encoding is
-  // needed here.
+  // key is stable regardless of how the URL was constructed. Encode every
+  // segment because valid opaque cursors may contain reserved URL characters.
   const cursorSegment = cursor ?? '_';
   const path = [graphApiVersion, userId, side, cursorSegment].map(encodeURIComponent).join('/');
   return new Request(`https://ig-cache.local/${path}`, { method: 'GET' });
@@ -475,14 +473,17 @@ export default {
     // pages cache independently.
     const cacheKey = buildCacheKey(side, route.userId, graphApiVersion, cursor);
 
-    // Build the upstream request WITH the token in a Bearer header.
-    // When a cursor is supplied, pass it to Graph API as `after` so we
-    // get the next page of results.
-    const igUrl =
-      `https://graph.instagram.com/${graphApiVersion}/${route.userId}/media` +
-      `?fields=${MEDIA_FIELDS}` +
-      `&limit=9` +
-      (cursor ? `&after=${encodeURIComponent(cursor)}` : '');
+    // Build the upstream request WITH the token in a Bearer header. Using
+    // URLSearchParams preserves the already-decoded opaque cursor and applies
+    // exactly one layer of query encoding when passing it to Graph as `after`.
+    const igUrl = new URL(
+      `https://graph.instagram.com/${graphApiVersion}/${route.userId}/media`,
+    );
+    igUrl.search = new URLSearchParams({
+      fields: MEDIA_FIELDS,
+      limit: '9',
+      ...(cursor ? { after: cursor } : {}),
+    }).toString();
 
     try {
       const cache = caches.default;

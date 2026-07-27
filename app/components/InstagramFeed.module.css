@@ -201,20 +201,61 @@
 }
 
 /*
- * Load-more control. Pinned under the grid, aligned to the same
- * column rhythm. The button mirrors the .follow pill style for
- * consistency.
+ * Infinite-scroll sentinel + status. The sentinel <div> is invisible
+ * to sighted users but is what the IntersectionObserver watches; the
+ * generous rootMargin on the observer means the next page is already in
+ * flight by the time the sentinel is anywhere near the viewport, so we
+ * never need to show a separate "Load more" button during normal
+ * operation. We render exactly one of: a loading/status line, an end
+ * marker, or (on failure) the error message plus an accessible Retry
+ * button.
  */
-.loadMoreRow {
+.sentinelRow {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
   margin-top: clamp(24px, 4vw, 36px);
+  min-height: 1px; /* keep the row alive so the sentinel has size */
 }
-.loadMore {
+.sentinel {
+  /* 1px tall marker just inside the row. The observer's rootMargin
+   * (600px) means this triggers well before the user actually reaches
+   * the bottom of the grid. */
+  width: 100%;
+  height: 1px;
+}
+.statusLoading,
+.statusEnd,
+.retryError {
+  margin: 0;
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  max-width: 52ch;
+}
+.statusLoading {
+  color: var(--ink-mute);
+}
+.statusEnd {
+  color: var(--ink-mute);
+}
+.retryBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.retryError {
+  color: var(--accent);
+  letter-spacing: 0.08em;
+}
+.retryButton {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   color: var(--ink);
   font-family: var(--ff-mono);
@@ -229,32 +270,15 @@
   cursor: pointer;
   transition: color 200ms, border-color 200ms, background 200ms;
 }
-.loadMore:hover:not(:disabled) {
+.retryButton:hover:not(:disabled) {
   color: var(--accent);
   border-color: var(--accent);
 }
-.loadMore:focus-visible {
+.retryButton:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
-.loadMore:disabled {
+.retryButton:disabled {
   opacity: 0.6;
   cursor: progress;
-}
-.loadMoreEnd {
-  margin: 0;
-  font-family: var(--ff-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-mute);
-}
-.loadMoreError {
-  margin: 0;
-  font-family: var(--ff-mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--accent);
-  text-align: center;
-  max-width: 52ch;
 }

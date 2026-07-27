@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { normalizeInstagramPosts, type IGPost } from './instagramData';
 import styles from './InstagramFeed.module.css';
@@ -39,17 +39,42 @@ type FeedPost = IGPost & { children?: IGCrossPostChild[] };
 
 interface FeedResponse {
   data?: unknown;
-  paging?: { next?: string };
+  paging?: unknown;
 }
 
-function readPagingNext(payload: unknown): string | null {
-  if (!payload || typeof payload !== 'object') return null;
-  if (!('paging' in payload)) return null;
-  const paging = (payload as Record<string, unknown>).paging;
-  if (!paging || typeof paging !== 'object') return null;
-  const next = (paging as Record<string, unknown>).next;
-  return typeof next === 'string' && next.length > 0 ? next : null;
+function getPagingNext(response: unknown): unknown {
+  if (!response || typeof response !== 'object' || !('paging' in response)) return null;
+  const paging = response.paging;
+  if (!paging || typeof paging !== 'object' || !('next' in paging)) return null;
+  return paging.next;
 }
+
+/**
+ * `paging.next` is opaque from the client's point of view — the Worker
+ * may send a short token, a full Instagram URL, or nothing at all.
+ *
+ * We accept either shape at the client boundary. A short opaque token
+ * is forwarded to the Worker as-is. A full URL (e.g. from a stale cached
+ * response whose shape predates the new proxy) is parsed and its `after`
+ * query parameter is extracted, which is the only piece our proxy uses
+ * for the next-page request. Anything unparseable yields `null` so we
+ * don't fire a request that would 400.
+ */
+function normalizeCursor(next: unknown): string | null {
+  if (typeof next !== 'string' || !next) return null;
+  // Looks like a full URL (http(s)://…) — parse it and pull `after`.
+  if (/^https?:\/\//i.test(next)) {
+    try {
+      const params = new URL(next).searchParams;
+      const after = params.get('after');
+      return after && after.length > 0 ? after : null;
+    } catch {
+      return null;
+    }
+  }
+  return next;
+}
+
 
 /**
  * InstagramFeed
@@ -84,14 +109,33 @@ export function InstagramFeed({
   // placeholders above should keep showing until this flips to true so
   // a slow first fetch doesn't briefly flash real posts onto the page.
   const [hasInitialLoaded, setHasInitialLoaded] = useState(false);
+  // Monotonic token bumped on every feed-lifecycle boundary (unmount,
+  // or `proxyUrl` / `side` change). `fetchNextPage` captures the
+  // current value at start and re-checks it before each state mutation;
+  // a mismatch means the lifecycle ended and any in-flight response is
+  // stale, so the setter is skipped. This is the only safe way to
+  // guard an `await fetch(...)` chain against the component unmounting
+  // (or `side` switching) mid-request — without it, React would log a
+  // "setState on unmounted" warning and we'd briefly leak the late
+  // page into the wrong lifecycle's grid.
+  const lifecycleTokenRef = useRef(0);
+
 
   useEffect(() => {
     if (!proxyUrl) return; // No proxy URL configured — show placeholder
+    // Bump the lifecycle token on entry; any in-flight `fetchNextPage`
+    // from the previous lifecycle now sees a stale token and bails
+    // before it can call a setter. Cleared `isLoadingMore` /
+    // `loadMoreError` here too so a late pagination response can't
+    // strand the new lifecycle in a stale loading-or-error state
+    // (the pagination guards short-circuit on `isLoadingMore`).
+    const token = ++lifecycleTokenRef.current;
     let cancelled = false;
     setError(null);
     setPosts([]);
     setNextCursor(null);
     setLoadMoreError(null);
+    setIsLoadingMore(false);
     setHasInitialLoaded(false);
     const url = `${proxyUrl.replace(/\/$/, '')}/${side}`;
     fetch(url)
@@ -100,51 +144,144 @@ export function InstagramFeed({
         return r.json() as Promise<FeedResponse>;
       })
       .then((data: FeedResponse) => {
-        if (cancelled) return;
+        if (cancelled || lifecycleTokenRef.current !== token) return;
         const validPosts = normalizeInstagramPosts(data) as FeedPost[];
         setPosts(validPosts);
-        setNextCursor(readPagingNext(data));
+        setNextCursor(normalizeCursor(getPagingNext(data)));
         if (validPosts.length === 0) setError('No valid posts were returned.');
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e?.message || e));
+        if (!cancelled && lifecycleTokenRef.current === token) setError(String(e?.message || e));
       })
       .finally(() => {
-        if (!cancelled) setHasInitialLoaded(true);
+        if (!cancelled && lifecycleTokenRef.current === token) setHasInitialLoaded(true);
       });
     return () => {
       cancelled = true;
     };
   }, [proxyUrl, side]);
 
-  // Manual "Load more" — appends deduplicated posts fetched with the
-  // current cursor. The Worker returns `paging.next` either as a new
-  // cursor (more pages remain) or absent (end of feed).
-  const handleLoadMore = useCallback(async () => {
-    if (!proxyUrl || isLoadingMore || nextCursor === null) return;
+  // Build the proxy URL for the next page. `nextCursor` is the opaque
+  // value we stored from the previous response — we never re-parse it
+  // here. URL/URLSearchParams handles encoding for us, so a cursor with
+  // `&`, `=`, `+`, or `#` won't break the request.
+  const buildNextPageUrl = useCallback((cursor: string): string | null => {
+    if (!proxyUrl) return null;
+    const base = `${proxyUrl.replace(/\/$/, '')}/${side}`;
+    const url = new URL(base);
+    url.searchParams.set('cursor', cursor);
+    return url.toString();
+  }, [proxyUrl, side]);
+
+  // Sentinel-driven pagination. The intersection observer watches the
+  // ref'd sentinel <div>; when it nears the viewport (generous
+  // rootMargin so pages start loading before the user reaches the
+  // bottom) we kick off the next fetch — but only if we have a cursor,
+  // aren't already loading, and aren't in an error state (the user must
+  // press Retry to recover from an error, otherwise we'd hot-loop).
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  // Mirror the error into a ref so the observer-effect closure can read
+  // the latest value without forcing the effect to re-bind (which would
+  // disconnect + reconnect the IntersectionObserver on every error flip).
+  const loadMoreErrorRef = useRef<string | null>(null);
+
+  // The "load more" core. Re-used by the observer and the explicit
+  // Retry button so both code paths funnel through one set of guards:
+  // - no proxy configured        → bail
+  // - another request in flight  → bail (concurrency)
+  // - error state still set      → bail (observer path only — Retry
+  //                                 passes the explicit `force` flag so
+  //                                 it can clear the error and retry).
+  // - lifecycle ended (unmount or `proxyUrl`/`side` change since the
+  //   request started) → bail before any setter runs so the response
+  //   can't leak posts / cursor / error / loading into the new
+  //   lifecycle.
+  // On success we replace `nextCursor` with the new opaque value,
+  // normalized so a stale cached full-URL `paging.next` still works.
+  const fetchNextPage = useCallback(async (force: boolean = false) => {
+    if (!proxyUrl) return;
+    if (isLoadingMore) return;
+    if (!force && loadMoreErrorRef.current) return;
+    if (nextCursor === null) return;
+    const nextPageUrl = buildNextPageUrl(nextCursor);
+    if (!nextPageUrl) return;
+    // Snapshot the current lifecycle token so we can detect that the
+    // unmount / proxyUrl / side change happened while we were awaiting.
+    // Reading the ref here (not in a state) means we always see the
+    // latest value without re-creating this callback.
+    const token = lifecycleTokenRef.current;
     setIsLoadingMore(true);
-    setLoadMoreError(null);
-    const url =
-      `${proxyUrl.replace(/\/$/, '')}/${side}` +
-      `?cursor=${encodeURIComponent(nextCursor)}`;
     try {
-      const response = await fetch(url);
+      const response = await fetch(nextPageUrl);
+      // Bail before reading the body if the lifecycle ended while the
+      // network round-trip was in flight.
+      if (lifecycleTokenRef.current !== token) return;
       if (!response.ok) throw new Error(`Proxy ${response.status}`);
       const data = (await response.json()) as FeedResponse;
+      // Re-check after the second await — a proxy/flip while parsing
+      // would otherwise leak posts into the next lifecycle.
+      if (lifecycleTokenRef.current !== token) return;
       const incoming = normalizeInstagramPosts(data) as FeedPost[];
       setPosts((existing) => {
         const seen = new Set(existing.map((post) => post.id));
         const additions = incoming.filter((post) => !seen.has(post.id));
         return existing.concat(additions);
       });
-      setNextCursor(readPagingNext(data));
+      setNextCursor(normalizeCursor(getPagingNext(data)));
     } catch (e) {
+      // Skip error reporting for a stale lifecycle — surfacing it would
+      // show a phantom error message in the new (or unmounted) feed.
+      if (lifecycleTokenRef.current !== token) return;
       const message = e instanceof Error ? e.message : String(e);
       setLoadMoreError(message || String(e));
     } finally {
-      setIsLoadingMore(false);
+      // Only the lifecycle that started this request is allowed to
+      // clear its own loading flag. A late `finally` after unmount /
+      // lifecycle flip must be a no-op, otherwise we'd clobber the
+      // new lifecycle's loading state (or warn about an unmounted
+      // component).
+      if (lifecycleTokenRef.current === token) setIsLoadingMore(false);
     }
-  }, [proxyUrl, side, nextCursor, isLoadingMore]);
+  }, [proxyUrl, buildNextPageUrl, nextCursor, isLoadingMore]);
+
+  // Observer is (re)attached whenever the sentinel mounts or the
+  // pagination state changes. Cleanup disconnects before reattach, so
+  // we don't accumulate listeners or double-fire during fast scrolls.
+  useEffect(() => {
+    const node = sentinelRef.current;
+    if (!node) return;
+    // Pause auto-loading while a previous attempt failed — the user
+    // must press Retry to recover, otherwise the observer would fire
+    // again immediately and we'd hot-loop.
+    if (loadMoreErrorRef.current) return;
+    if (nextCursor === null) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          fetchNextPage(false);
+        }
+      },
+      // Generous rootMargin so the next page is already in flight by
+      // the time the sentinel enters the viewport — no visible pause.
+      { rootMargin: '600px 0px 600px 0px' },
+    );
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+    };
+  }, [fetchNextPage, nextCursor]);
+  // Keep the ref synced with the latest error so the observer can read
+  // it without triggering a rebind on every error flip.
+  useEffect(() => {
+    loadMoreErrorRef.current = loadMoreError;
+  }, [loadMoreError]);
+  // Explicit retry — clears the error and fires one immediate fetch.
+  // The observer stays paused for this tick; the cleanup above will
+  // reattach it once `loadMoreError` flips to null on the next render.
+  const handleRetry = useCallback(() => {
+    if (isLoadingMore) return;
+    fetchNextPage(true);
+  }, [fetchNextPage, isLoadingMore]);
 
   const showRealPosts = Boolean(proxyUrl) && posts.length > 0;
   // Show the placeholder when we know there's nothing to render — i.e.
@@ -169,25 +306,37 @@ export function InstagramFeed({
                 />
               ))}
             </div>
-            <div className={styles.loadMoreRow}>
+            {/*
+              Pagination row. The sentinel <div> is what the
+              IntersectionObserver watches — placing it inside the grid
+              footer keeps the observer attached while the grid is on
+              screen and detached when the user navigates away. We
+              render exactly one of {loading, end, error+retry}.
+             */}
+            <div className={styles.sentinelRow}>
+              <div ref={sentinelRef} className={styles.sentinel} aria-hidden="true" />
               {loadMoreError ? (
-                <p className={styles.loadMoreError} role="alert">
-                  Couldn't load more posts. {loadMoreError}
-                </p>
-              ) : null}
-              {nextCursor !== null ? (
-                <button
-                  type="button"
-                  className={styles.loadMore}
-                  onClick={handleLoadMore}
-                  disabled={isLoadingMore}
-                  aria-busy={isLoadingMore}
-                >
-                  {isLoadingMore ? 'Loading…' : 'Load more'}
-                </button>
-              ) : (
-                <p className={styles.loadMoreEnd} role="status">
+                <div className={styles.retryBlock}>
+                  <p className={styles.retryError} role="alert">
+                    Couldn&apos;t load more posts. {loadMoreError}
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.retryButton}
+                    onClick={handleRetry}
+                    disabled={isLoadingMore}
+                    aria-busy={isLoadingMore}
+                  >
+                    {isLoadingMore ? 'Retrying…' : 'Retry'}
+                  </button>
+                </div>
+              ) : nextCursor === null ? (
+                <p className={styles.statusEnd} role="status">
                   You&apos;ve reached the end.
+                </p>
+              ) : (
+                <p className={styles.statusLoading} role="status" aria-live="polite">
+                  {isLoadingMore ? 'Loading more posts…' : 'Scroll for more'}
                 </p>
               )}
             </div>
