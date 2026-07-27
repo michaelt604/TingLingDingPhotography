@@ -108,3 +108,153 @@
   transition: transform 400ms ease;
 }
 .tile:hover .tileImage { transform: scale(1.04); }
+
+/*
+ * Tile link overlay.
+ *
+ * The whole tile is the clickable target for opening the IG permalink,
+ * but we can't put the <Image> inside the <a> because carousel
+ * controls are <button>s that can't legally live inside <a>. So the
+ * link is an absolute overlay above the image (and below the
+ * carousel buttons in z-order). It carries the accessible label.
+ */
+.tileLink {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+.tileLink:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+/*
+ * Visually-hidden but announced by assistive tech. Used to give the
+ * overlay link an accessible name without showing duplicate text.
+ */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/*
+ * Carousel navigation. Buttons are absolutely positioned over the
+ * tile. z-index sits above the link overlay so a tap lands on the
+ * button instead of triggering the link.
+ */
+.carouselButton {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(15, 15, 18, 0.72);
+  color: #fff;
+  cursor: pointer;
+  transition: background 180ms ease, transform 180ms ease;
+}
+.carouselButton:hover {
+  background: rgba(15, 15, 18, 0.88);
+}
+.carouselButton:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.carouselButton:active {
+  transform: translateY(-50%) scale(0.94);
+}
+.carouselButtonPrev { left: 8px; }
+.carouselButtonNext { right: 8px; }
+/* Touch-friendly sizing — bump the hit area on small screens. */
+@media (max-width: 540px) {
+  .carouselButton { width: 44px; height: 44px; }
+}
+
+.carouselIndicator {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15, 15, 18, 0.72);
+  color: #fff;
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+
+/*
+ * Load-more control. Pinned under the grid, aligned to the same
+ * column rhythm. The button mirrors the .follow pill style for
+ * consistency.
+ */
+.loadMoreRow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: clamp(24px, 4vw, 36px);
+}
+.loadMore {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-family: var(--ff-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 12px 22px;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  transition: color 200ms, border-color 200ms, background 200ms;
+}
+.loadMore:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.loadMore:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.loadMore:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.loadMoreEnd {
+  margin: 0;
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.loadMoreError {
+  margin: 0;
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  text-align: center;
+  max-width: 52ch;
+}

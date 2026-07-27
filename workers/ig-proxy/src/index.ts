@@ -5,11 +5,25 @@
  * exposes a CORS-safe JSON endpoint the static site can call.
  *
  * Routes:
- *   GET /underwater  → @tinglingdingphotography's media
- *   GET /portraits   → @tinglingdingportraits's media
+ *   GET /underwater           → first page of @tinglingdingphotography's media
+ *   GET /portraits            → first page of @tinglingdingportraits's media
+ *   GET /underwater?cursor=X  → next page of @tinglingdingphotography's media
+ *   GET /portraits?cursor=X   → next page of @tinglingdingportraits's media
  *
- * Caches successful feed responses at the Cloudflare edge for 1 hour so we don't
- * hit the Graph API on every page load.
+ * Pagination:
+ *   The upstream Graph API returns a `paging.next` URL that contains
+ *   the access token in the query string. We never forward that URL
+ *   to clients — we strip it and only surface the opaque cursor
+ *   (`paging.cursors.after`) under a `paging.next` field in our
+ *   response. Clients send it back as the `cursor` query param.
+ *
+ *   The cursor is validated as a short opaque token (alphanumeric
+ *   plus IG's base64url alphabet, length-bounded) so it cannot be
+ *   abused to inject a new URL or leak the upstream access token.
+ *
+ * Caches successful feed responses at the Cloudflare edge for 1 hour
+ * so we don't hit the Graph API on every page load. Cache keys include
+ * the cursor so paginated responses are cached independently.
  *
  * ──────────────────────────────────────────────────────────────────
  *  DEPLOY
@@ -35,8 +49,16 @@
  *   - Access token is sent to Graph API via Authorization: Bearer
  *     header (NOT a query param), so it never appears in URLs, cache
  *     keys, or access logs.
- *   - The cache key is a stable internal URL (`https://ig-cache/${side}`)
- *     — it never contains the token.
+ *   - The cache key is a stable internal URL
+ *     (`https://ig-cache/${version}/${userId}/${side}/${cursor}`) —
+ *     it never contains the token. The cursor is included only when
+ *     the caller passed one, so paginated responses are cached
+ *     independently while the token stays out of every key.
+ *   - The `paging.next` field in our response is the upstream
+ *     `paging.cursors.after` value — never the upstream URL, which
+ *     would embed the access token. Incoming `cursor` query params
+ *     are length-bounded and restricted to a safe character set so a
+ *     malicious caller cannot inject a token or a different URL.
  *   - ALLOWED_ORIGIN is a comma-separated HTTPS allowlist. Both the
  *     apex and www production origins are listed there. Each entry is
  *     validated as an HTTPS URL with no credentials, no path beyond
@@ -120,9 +142,153 @@ function routeFor(path: string, env: Env): { userId: string; accessToken: string
 
 const MEDIA_FIELDS = 'id,media_type,media_url,permalink,thumbnail_url,caption,timestamp';
 
-// Validates a single comma-delimited allowlist entry and returns the
-// normalized URL.origin, or null when the entry is empty, malformed, or
-// violates the strict HTTPS-origin policy.
+// Fields we ask for when listing the children of a CAROUSEL_ALBUM post.
+// Children don't have a `caption` or `timestamp` — those live on the
+// parent — and their `permalink` is optional (IG omits it on some
+// children), so we don't require it.
+const CHILDREN_FIELDS = 'id,media_type,media_url,permalink,thumbnail_url';
+
+// ──────────────────────────────────────────────────────────────────
+// Carousel child normalization
+// ──────────────────────────────────────────────────────────────────
+//
+// IG returns CAROUSEL_ALBUM posts with only the first child's media in
+// the parent's `media_url`. To render real per-image navigation we
+// also fetch each carousel's children and inline them in the response
+// as `post.children`. Failures to fetch a carousel's children are
+// silent — the post is returned without `children` and the client
+// falls back to the parent's `media_url`.
+
+const CHILD_MEDIA_TYPES = new Set(['IMAGE', 'VIDEO']);
+
+/**
+ * Returns true when the URL is an HTTPS URL on Instagram's CDN or
+ * fbcdn. Mirrors the host check used by the feed normalizer so a
+ * child can't smuggle in a non-IG asset.
+ */
+function isInstagramMediaHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return false;
+    const host = url.hostname;
+    return (
+      host === 'cdninstagram.com' ||
+      host.endsWith('.cdninstagram.com') ||
+      host === 'fbcdn.net' ||
+      host.endsWith('.fbcdn.net')
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns true when the URL is an HTTPS URL on instagram.com or a
+ * subdomain. Used to validate the optional `permalink` on carousel
+ * children.
+ */
+function isInstagramHttpsUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return false;
+    const host = url.hostname;
+    return host === 'instagram.com' || host.endsWith('.instagram.com');
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Normalizes the `data` array of a `/media/{id}/children` response.
+ * Each entry is whitelisted to known fields and validated as a real
+ * Instagram media URL. Returns an empty array when the payload is
+ * malformed — callers treat that as "no children, fall back to the
+ * parent's `media_url`".
+ */
+export function normalizeCarouselChildren(payload: unknown): unknown[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const data = (payload as { data?: unknown }).data;
+  if (!Array.isArray(data)) return [];
+  return data.filter((candidate): candidate is Record<string, unknown> => {
+    if (!candidate || typeof candidate !== 'object') return false;
+    const post = candidate as Record<string, unknown>;
+    const id = post.id;
+    const mediaUrl = post.media_url;
+    const mediaType = post.media_type;
+    if (typeof id !== 'string' || !id) return false;
+    if (typeof mediaUrl !== 'string' || !isInstagramMediaHttpsUrl(mediaUrl)) return false;
+    if (typeof mediaType !== 'string' || !CHILD_MEDIA_TYPES.has(mediaType)) return false;
+    const thumbnail = post.thumbnail_url;
+    if (
+      thumbnail !== undefined &&
+      (typeof thumbnail !== 'string' || !isInstagramMediaHttpsUrl(thumbnail))
+    ) {
+      return false;
+    }
+    const permalink = post.permalink;
+    if (
+      permalink !== undefined &&
+      (typeof permalink !== 'string' || !isInstagramHttpsUrl(permalink))
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * Fetches the children of a single CAROUSEL_ALBUM post. Returns the
+ * normalized array, or an empty array on any failure (which the caller
+ * treats as "fall back to the parent's media_url").
+ */
+async function fetchCarouselChildren(
+  graphApiVersion: string,
+  parentId: string,
+  accessToken: string,
+): Promise<unknown[]> {
+  const url =
+    `https://graph.instagram.com/${graphApiVersion}/${encodeURIComponent(parentId)}/children` +
+    `?fields=${CHILDREN_FIELDS}&limit=10`;
+  try {
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    });
+    if (!response.ok) return [];
+    const payload = await response.json();
+    return normalizeCarouselChildren(payload);
+  } catch (error) {
+    console.error(
+      'Instagram carousel children request failed',
+      parentId,
+      error instanceof Error ? error.name : 'UnknownError',
+    );
+    return [];
+  }
+}
+
+/**
+ * Augments a list of posts with inline `children` arrays for every
+ * CAROUSEL_ALBUM entry. Posts of other media types are returned
+ * unchanged. Failures to fetch a carousel's children are silent and
+ * leave that post without `children` — the client falls back to the
+ * parent's `media_url`.
+ */
+export async function inlineCarouselChildren(
+  graphApiVersion: string,
+  accessToken: string,
+  posts: Record<string, unknown>[],
+): Promise<Record<string, unknown>[]> {
+  return Promise.all(
+    posts.map(async (post) => {
+      if (post.media_type !== 'CAROUSEL_ALBUM') return post;
+      const id = post.id;
+      if (typeof id !== 'string') return post;
+      const children = await fetchCarouselChildren(graphApiVersion, id, accessToken);
+      return children.length > 0 ? { ...post, children } : post;
+    }),
+  );
+}
+
 function validateOriginEntry(entry: string): string | null {
   const trimmed = entry.trim();
   if (!trimmed) return null;
@@ -176,13 +342,51 @@ export function resolveGraphApiVersion(env: Env): string | null {
   return /^v\d+\.\d+$/.test(version) ? version : null;
 }
 
+// IG's `paging.cursors.after` tokens are short opaque strings (base64url-ish).
+// We accept the same alphabet for incoming cursors and length-bound them so
+// a malicious caller cannot smuggle a URL fragment or an access token into
+// a cache key, an upstream URL, or a response body. Returns the normalized
+// cursor or null when the value is empty, too long, or contains anything
+// outside the allowlist charset.
+const MAX_CURSOR_LENGTH = 256;
+export function validateCursor(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  if (value.length === 0 || value.length > MAX_CURSOR_LENGTH) return null;
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  return value;
+}
+
 export function buildCacheKey(
   side: string,
   userId: string,
   graphApiVersion: string,
+  cursor?: string | null,
 ): Request {
-  const path = [graphApiVersion, userId, side].map(encodeURIComponent).join('/');
+  // Use a fixed marker when no cursor is provided so the first-page cache
+  // key is stable regardless of how the URL was constructed. validateCursor
+  // restricts cursors to the URL-safe alphabet so no further encoding is
+  // needed here.
+  const cursorSegment = cursor ?? '_';
+  const path = [graphApiVersion, userId, side, cursorSegment].map(encodeURIComponent).join('/');
   return new Request(`https://ig-cache.local/${path}`, { method: 'GET' });
+}
+
+// Strips any `paging.next` URL from an upstream Graph API payload and
+// returns a sanitized object whose `paging.next` field is the opaque
+// cursor token only. Returns undefined when the payload has no paging
+// block or the upstream cursor fails validation.
+export function sanitizePaging(payload: unknown): { next?: string } | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  if (!('paging' in payload)) return undefined;
+  const raw = (payload as Record<string, unknown>).paging;
+  if (!raw || typeof raw !== 'object') return undefined;
+  if (!('cursors' in raw)) return undefined;
+  const cursors = (raw as Record<string, unknown>).cursors;
+  if (!cursors || typeof cursors !== 'object') return undefined;
+  const after = (cursors as Record<string, unknown>).after;
+  const cursor = validateCursor(after);
+  if (!cursor) return undefined;
+  return { next: cursor };
 }
 
 export default {
@@ -251,25 +455,46 @@ export default {
       return errorResponse('Service configuration is incomplete.', effectiveOrigin, 503);
     }
 
+    // Reject malformed cursors before doing any upstream work. An invalid
+    // cursor is a 400, not a 404 — the route is valid; only the pagination
+    // token is wrong. A missing cursor is fine and means "first page".
+    const rawCursor = url.searchParams.get('cursor');
+    let cursor: string | null = null;
+    if (rawCursor !== null) {
+      cursor = validateCursor(rawCursor);
+      if (cursor === null) {
+        return errorResponse('Invalid cursor.', effectiveOrigin, 400);
+      }
+    }
+
     // Cache key: stable, internal, NEVER includes the token.
     // Using the upstream URL as a cache key would put the token into
     // the key (since we used to send it as a query param). Now the
     // token goes in the Authorization header instead, so we can use
-    // a clean internal key.
-    const cacheKey = buildCacheKey(side, route.userId, graphApiVersion);
+    // a clean internal key. The cursor is part of the key so different
+    // pages cache independently.
+    const cacheKey = buildCacheKey(side, route.userId, graphApiVersion, cursor);
 
     // Build the upstream request WITH the token in a Bearer header.
+    // When a cursor is supplied, pass it to Graph API as `after` so we
+    // get the next page of results.
     const igUrl =
       `https://graph.instagram.com/${graphApiVersion}/${route.userId}/media` +
       `?fields=${MEDIA_FIELDS}` +
-      `&limit=9`;
+      `&limit=9` +
+      (cursor ? `&after=${encodeURIComponent(cursor)}` : '');
 
     try {
       const cache = caches.default;
       const cached = await cache.match(cacheKey);
       if (cached) {
-        const body = await cached.json();
-        return jsonResponse(body, effectiveOrigin);
+        // Always re-sanitize on hit so any pre-deploy cached entry that
+        // still carries the upstream `paging.next` URL (with the access
+        // token embedded) is cleaned up before it leaves the Worker.
+        const body = (await cached.json()) as Record<string, unknown>;
+        const paging = sanitizePaging(body);
+        const safeBody = paging ? { ...body, paging } : body;
+        return jsonResponse(safeBody, effectiveOrigin);
       }
 
       const upstream = await fetch(igUrl, {
@@ -285,13 +510,31 @@ export default {
         return errorResponse('Instagram feed is temporarily unavailable.', effectiveOrigin, 502);
       }
 
-      const data = await upstream.json();
-      // Cache the successful response under the clean key.
-      const cacheable = new Response(JSON.stringify(data), {
+      // The upstream `paging.next` is a full URL that contains the
+      // access token in the query string. We strip it and surface only
+      // the opaque cursor so the token never leaves this Worker. We
+      // also inline carousel children so the client gets a single
+      // round-trip's worth of data and never has to ask Graph API
+      // again for the same feed page.
+      const rawData = (await upstream.json()) as Record<string, unknown>;
+      const rawPosts = Array.isArray(rawData.data) ? rawData.data : [];
+      const safePosts = rawPosts.filter(
+        (post): post is Record<string, unknown> => Boolean(post) && typeof post === 'object',
+      );
+      const augmentedPosts = await inlineCarouselChildren(
+        graphApiVersion,
+        route.accessToken,
+        safePosts,
+      );
+      const data: Record<string, unknown> = { ...rawData, data: augmentedPosts };
+      const paging = sanitizePaging(data);
+      const responseBody = paging ? { ...data, paging } : data;
+      // Cache the sanitized response under the clean key.
+      const cacheable = new Response(JSON.stringify(responseBody), {
         headers: { 'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}` },
       });
       await cache.put(cacheKey, cacheable.clone());
-      return jsonResponse(data, effectiveOrigin);
+      return jsonResponse(responseBody, effectiveOrigin);
     } catch (error) {
       console.error(
         'Instagram proxy request failed',
