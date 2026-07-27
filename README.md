@@ -16,13 +16,13 @@ exported as a fully static site, and deployed to **Cloudflare Pages**.
 | Hosting | Cloudflare Pages (free tier) |
 | Source | GitHub |
 | Instagram | `@tinglingdingphotography` (underwater) · `@tinglingdingportraits` (portraits) |
-| Contact | `mailto:tinglingdingphotography@gmail.com` (no backend) — appears only on the portraits page |
+| Contact | `mailto:tinglingdingphotography@gmail.com` with an explicit handoff status and direct-email fallback |
 
 ---
 
 ## Local development
 
-Requires Node 18.18+ (Node 20 LTS recommended).
+Requires Node 22+ (Node 24 is used in CI).
 
 ```bash
 # install
@@ -33,6 +33,9 @@ npm run dev          # → http://localhost:3000
 
 # production build (writes to ./out)
 npm run build
+
+# full quality gate
+npm run check
 
 # preview the production build locally
 npx serve out        # or any static host
@@ -152,7 +155,7 @@ caches at the edge for 1 hour, and returns CORS-safe JSON.
    is dead).
 
 4. **Get the user IDs.** Visit
-   `https://graph.instagram.com/v18.0/me?fields=id&access_token=SHORT_TOKEN`
+   `https://graph.instagram.com/v23.0/me?fields=id&access_token=SHORT_TOKEN`
    for each account. Copy the numeric `id` field for each.
 
 5. **Generate a long-lived access token** for each account:
@@ -165,28 +168,22 @@ caches at the edge for 1 hour, and returns CORS-safe JSON.
    ```
    Do this twice — once per IG account, using the matching token.
 
-6. **Deploy the Worker** (the code is already in `workers/ig-proxy/`):
+6. **Deploy the Worker** (the code is already in `workers/ig-proxy/`). The public production Worker is `https://ig-proxy.michaelt604.workers.dev`. GitHub Actions deploys this Worker from the repository root before uploading the Pages artifact on pushes to `main`. For a manual deployment, use the existing workspace tooling:
    ```bash
-   cd workers/ig-proxy
-   npm install
-   npx wrangler login
-   npx wrangler secret put IG_USER_ID_UNDERWATER
-   npx wrangler secret put IG_ACCESS_TOKEN_UNDERWATER
-   npx wrangler secret put IG_USER_ID_PORTRAITS
-   npx wrangler secret put IG_ACCESS_TOKEN_PORTRAITS
-   npx wrangler deploy
+   npm run deploy --workspace=ig-proxy
    ```
-   The deploy output will give you a URL like
-   `https://ig-proxy.<your-subdomain>.workers.dev`.
+   Worker access tokens remain in the existing Cloudflare secret bindings and are never placed in Pages or GitHub build variables.
 
-7. **Set `NEXT_PUBLIC_IG_PROXY_URL`** in your env to that Worker URL
-   (in `.env.local` for dev, in Cloudflare Pages → Settings →
-   Environment variables for prod).
+   The Worker's CORS allowlist (`ALLOWED_ORIGIN` in `workers/ig-proxy/wrangler.toml`) is a comma-separated HTTPS allowlist that includes both live production origins — `https://tinglingdingphotography.com` and `https://www.tinglingdingphotography.com`. Both hosts return 200 directly (www does not redirect to apex), so requests from either are accepted; the apex and www variants are matched exactly and lookalike origins are rejected.
 
-8. **Redeploy the static site.** The feed will start showing real
-   posts. Refresh tokens every 60 days (set a calendar reminder —
-   when they expire, the feed falls back to the placeholder with an
-   error note).
+7. **Set `NEXT_PUBLIC_IG_PROXY_URL`** to `https://ig-proxy.michaelt604.workers.dev` for local production builds. It is tracked in `.env.production`, so CI validates and uses the same resolved value without relying on an unset GitHub variable.
+
+8. **Redeploy the static site.** The automated workflow validates the production URL, builds the static export, deploys the Worker, and then deploys `out/` to the `tinglingding-photography` Pages project. The feed will show real posts once valid tokens and live content are available.
+
+9. **Add Worker abuse controls in Cloudflare.** CORS prevents other browser origins from reading the response, but it is not authentication or rate limiting. Configure a Worker rate-limit/WAF rule and monitor Instagram API usage in the Cloudflare dashboard.
+
+**Deferred production work:** Instagram token renewal and real image/feed content are intentionally deferred. Do not put token or other credential values in this repository, Pages settings, or GitHub build variables.
+
 
 **Why this is the right answer:** zero ongoing cost, you own the
 data, no third-party branding, free of trial limits. The 1-2h setup
@@ -233,7 +230,7 @@ The site is set up for `output: 'export'` so the build is a static
    - **Framework preset:** Next.js (Static Export)
    - **Build command:** `npm run build`
    - **Build output directory:** `out`
-   - **Node version:** 20 (set under Environment variables → `NODE_VERSION=20`)
+   - **Node version:** 24
 5. **Save and deploy.** First deploy takes a couple of minutes.
 6. **Custom domain:** Pages will give you a `*.pages.dev` URL. Once that's
    live, attach `tinglingdingphotography.com`:
@@ -266,9 +263,8 @@ way to point it at Pages is to move DNS to Cloudflare.
 
 ### Environment variables
 
-None required for the static build. If you add server-side features
-later (Resend, OG image generation, etc.), set them under
-**Pages → Settings → Environment variables**.
+The tracked `.env.production` sets `NEXT_PUBLIC_IG_PROXY_URL` to the public Worker at `https://ig-proxy.michaelt604.workers.dev`. GitHub Actions validates this exact HTTPS host before every production build. Worker access tokens remain existing Cloudflare Worker secrets and must never be placed in Pages, repository files, or GitHub build variables.
+
 
 ---
 
@@ -286,7 +282,7 @@ Most tweaks live in:
 | Accent colors | `app/globals.css` (`[data-side="underwater"]` and `[data-side="portrait"]` blocks) |
 | Hero gradient (per side) | `app/underwater/page.module.css` and `app/portraits/page.module.css` (3 slide variants) |
 | Hub gradient colors | `app/page.module.css` (`.halfUnderwater .halfBg` and `.halfPortrait .halfBg`) |
-| Fonts | `app/layout.tsx` (Google Fonts link) + `app/globals.css` (`--ff-display`, `--ff-body`, etc.) |
+| Fonts | `app/layout.tsx` (`next/font`) + `app/globals.css` (`--ff-display`, `--ff-body`, etc.) |
 | Self-review screenshots | Daemon MCP bridge at `tools/mcp-bridge.cjs` — registered as "playwright" in `~/.mavis/mcp/mcp.json` |
 | Cloudflare Worker | `workers/ig-proxy/` — deploy with `wrangler deploy` after setting secrets |
 
@@ -295,9 +291,11 @@ Most tweaks live in:
 ## Roadmap (when you want it)
 
 - [ ] Real hero photos (swap from CSS placeholders)
-- [ ] Wire up the IG widget for both sides
+- [x] Pin and validate the production IG Worker URL
+- [ ] Renew Instagram tokens and add real image/feed content (deferred)
+
 - [ ] Custom 404 page
-- [ ] Open Graph image (drop a JPG in `public/og-default.png`)
+- [x] Non-photographic Open Graph fallback (`public/og-default.png`, sourced from the adjacent SVG)
 - [ ] Image optimization (turn off `unoptimized` in `next.config.mjs` and
       add `next/image` everywhere)
 - [ ] Optional: upgrade to SSR with `@cloudflare/next-on-pages` if you
@@ -305,6 +303,4 @@ Most tweaks live in:
 
 ## Auto-deploy
 
-Pushing to `main` triggers the GitHub Actions workflow at
-`.github/workflows/deploy.yml`, which runs `next build` and deploys the
-static `out/` directory to Cloudflare Pages via Direct Upload.
+Pushing to `main` triggers the GitHub Actions workflow at `.github/workflows/deploy.yml`. It verifies the repository and builds the static export, then the production-only deploy job publishes `workers/ig-proxy/` before uploading `out/` to the `tinglingding-photography` Cloudflare Pages project. Pull requests only run verification and never mutate Cloudflare.

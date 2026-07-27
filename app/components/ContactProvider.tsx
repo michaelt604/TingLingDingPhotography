@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, type ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { ContactModal } from './ContactModal';
 
 interface ContactContextValue {
@@ -18,6 +19,8 @@ const ContactContext = createContext<ContactContextValue | null>(null);
  */
 export function ContactProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
+  const pathname = usePathname();
+  const side = pathname.startsWith('/underwater') ? 'underwater' : 'portraits';
 
   const value: ContactContextValue = {
     open: () => setIsOpen(true),
@@ -27,7 +30,11 @@ export function ContactProvider({ children }: { children: ReactNode }) {
   return (
     <ContactContext.Provider value={value}>
       {children}
-      <ContactModal open={isOpen} onClose={() => setIsOpen(false)} />
+      <ContactModal
+        open={isOpen}
+        onClose={() => setIsOpen(false)}
+        side={side}
+      />
     </ContactContext.Provider>
   );
 }

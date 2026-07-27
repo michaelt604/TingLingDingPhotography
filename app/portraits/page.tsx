@@ -11,6 +11,7 @@ export const metadata: Metadata = {
   alternates: { canonical: '/portraits/' },
   openGraph: {
     url: '/portraits/',
+    images: ['/og-default.png'],
   },
 };
 

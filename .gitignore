@@ -5,7 +5,8 @@ node_modules/
 
 # next.js
 .next/
-out/                      # static export — built by Cloudflare Pages, not committed
+# Static export built by Cloudflare Pages, not committed.
+out/
 
 # logs
 npm-debug.log*
@@ -37,7 +38,8 @@ next-env.d.ts.bak
 .turbo/
 
 # project-specific
-preview/                  # self-review screenshots — local-only, not in version control
-moodboard/                # visual reference from the design phase — keep locally
-playwright-bridge-deps/   # if I ever need a separate bridge directory
-.worktrees/               # git worktree checkouts — local-only, never commit
+# Self-review screenshots and local design/tooling directories.
+preview/
+moodboard/
+playwright-bridge-deps/
+.worktrees/

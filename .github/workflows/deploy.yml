@@ -3,33 +3,87 @@ name: Deploy to Cloudflare Pages
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  deploy:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
-      deployments: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Lint, test, and typecheck
+        run: npm run check
+
+      - name: Audit high-severity production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Validate the production Instagram proxy URL
+        run: >-
+          node --env-file=.env.production -e "const u=new URL(process.env.NEXT_PUBLIC_IG_PROXY_URL);
+          if(u.protocol!=='https:' || u.hostname!=='ig-proxy.michaelt604.workers.dev') process.exit(1)"
 
       - name: Build (Next.js static export)
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: 1
 
+
+      - name: Upload static export
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: static-export
+          path: out
+          if-no-files-found: error
+
+  deploy:
+    needs: verify
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install deployment tooling
+        run: npm ci
+
+      - name: Download static export
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: static-export
+          path: out
+
+      - name: Deploy ig-proxy Worker
+        run: npx --no-install wrangler deploy --config workers/ig-proxy/wrangler.toml
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       - name: Deploy to Cloudflare Pages (Direct Upload)
-        run: npx wrangler pages deploy out --project-name tinglingding-photography --branch main --commit-dirty=true
+        run: npx --no-install wrangler pages deploy out --project-name tinglingding-photography --branch main --commit-dirty=true
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

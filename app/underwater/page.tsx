@@ -11,6 +11,7 @@ export const metadata: Metadata = {
   alternates: { canonical: '/underwater/' },
   openGraph: {
     url: '/underwater/',
+    images: ['/og-default.png'],
   },
 };
 

@@ -2,19 +2,32 @@
   "name": "tinglingdingphotography",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "Personal photography site — split-screen hub with an underwater/cinematic side and a portrait/minimal side. Static export, deployed to Cloudflare Pages.",
+  "workspaces": [
+    "workers/ig-proxy"
+  ],
+  "overrides": {
+    "postcss": "8.5.23",
+    "sharp": "0.35.3"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "lint": "biome lint app tests workers/ig-proxy/src workers/ig-proxy/test next.config.mjs",
+    "test": "node --test tests/*.test.ts workers/ig-proxy/test/*.test.ts",
+    "typecheck": "tsc --noEmit && npm run typecheck --workspace=ig-proxy",
+    "check": "npm run lint && npm test && npm run typecheck"
   },
   "dependencies": {
-    "next": "^15.0.3",
+    "next": "15.5.22",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.5",
+    "@cloudflare/workers-types": "5.20260726.1",
     "@types/node": "^22.9.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

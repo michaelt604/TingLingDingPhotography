@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
+import { normalizeInstagramPosts, type IGPost } from './instagramData';
 import styles from './InstagramFeed.module.css';
 
 interface Props {
@@ -8,24 +10,12 @@ interface Props {
   handle: string;
   /** Profile URL on instagram.com */
   profileUrl: string;
-  /** When the widget is not active, render this many placeholder tiles */
-  placeholderCount?: number;
   /**
    * Which side this is — used to route the proxy fetch.
    * Set automatically by the page; the Worker uses it to pick the
    * matching IG account.
    */
   side: 'underwater' | 'portraits';
-}
-
-interface IGPost {
-  id: string;
-  media_type: 'IMAGE' | 'VIDEO' | 'CAROUSEL_ALBUM';
-  media_url: string;
-  permalink: string;
-  thumbnail_url?: string;
-  caption?: string;
-  timestamp: string;
 }
 
 /**
@@ -45,7 +35,6 @@ interface IGPost {
 export function InstagramFeed({
   handle,
   profileUrl,
-  placeholderCount = 9,
   side,
 }: Props) {
   const proxyUrl = process.env.NEXT_PUBLIC_IG_PROXY_URL;
@@ -62,13 +51,11 @@ export function InstagramFeed({
         if (!r.ok) throw new Error(`Proxy ${r.status}`);
         return r.json();
       })
-      .then((data) => {
+      .then((data: unknown) => {
         if (cancelled) return;
-        if (Array.isArray(data.data)) {
-          setPosts(data.data);
-        } else if (data.error) {
-          setError(String(data.error));
-        }
+        const validPosts = normalizeInstagramPosts(data);
+        setPosts(validPosts);
+        if (validPosts.length === 0) setError('No valid posts were returned.');
       })
       .catch((e) => {
         if (!cancelled) setError(String(e?.message || e));
@@ -79,8 +66,6 @@ export function InstagramFeed({
   }, [proxyUrl, side]);
 
   const showRealPosts = Boolean(proxyUrl) && posts.length > 0;
-  const tiles = Array.from({ length: placeholderCount }, (_, i) => i + 1);
-
   return (
     <section className={styles.feed} id="instagram" aria-label={`Latest posts from @${handle}`}>
       <div className="container">
@@ -104,31 +89,33 @@ export function InstagramFeed({
                   className={styles.tile}
                   aria-label={label}
                 >
-                  <img src={src} alt="" loading="lazy" className={styles.tileImage} />
+                  <Image
+                    src={src}
+                    alt=""
+                    fill
+                    sizes="(min-width: 1024px) 30vw, (min-width: 540px) 33vw, 50vw"
+                    unoptimized
+                    className={styles.tileImage}
+                  />
                 </a>
               );
             })}
           </div>
         ) : (
-          <div className={styles.placeholder}>
-            {process.env.NODE_ENV !== 'production' && error && (
-              <p className={styles.placeholderNote}>
-                Instagram feed unavailable: {error}
-              </p>
-            )}
-            <div className={styles.grid}>
-              {tiles.map((n) => (
-                <a
-                  key={n}
-                  href={profileUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={styles.tile}
-                  data-tile={n}
-                  aria-label={`View @${handle} on Instagram`}
-                />
-              ))}
-            </div>
+          <div className={styles.placeholder} role="status">
+            <p className={styles.placeholderTitle}>Instagram photos are unavailable right now.</p>
+            <p className={styles.placeholderNote}>
+              Visit @{handle} on Instagram to see the latest work.
+              {process.env.NODE_ENV !== 'production' && error ? ` (${error})` : ''}
+            </p>
+            <a
+              href={profileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn--primary"
+            >
+              View Instagram profile
+            </a>
           </div>
         )}
       </div>

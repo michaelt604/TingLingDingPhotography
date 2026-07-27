@@ -85,3 +85,9 @@ textarea.input { min-height: 140px; }
   transition: color 200ms;
 }
 .direct:hover { color: var(--accent); }
+
+.status {
+  min-height: 1.6em;
+  color: var(--ink-soft);
+  font-size: 14px;
+}

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title description">
+  <title id="title">TingLingDing Photography</title>
+  <desc id="description">Abstract cyan and lavender split representing underwater, nature, and portrait photography.</desc>
+  <defs>
+    <linearGradient id="underwater" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06151c"/>
+      <stop offset="1" stop-color="#1a5a70"/>
+    </linearGradient>
+    <linearGradient id="portrait" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a0a2e"/>
+      <stop offset="1" stop-color="#5b357d"/>
+    </linearGradient>
+  </defs>
+  <rect width="600" height="630" fill="url(#underwater)"/>
+  <rect x="600" width="600" height="630" fill="url(#portrait)"/>
+  <path d="M0 470 C170 400 350 540 600 430 L600 630 L0 630Z" fill="#4ecdc4" opacity=".14"/>
+  <circle cx="930" cy="160" r="210" fill="#d0a8ee" opacity=".12"/>
+  <rect x="72" y="72" width="1056" height="486" rx="28" fill="none" stroke="#f3f7f8" stroke-opacity=".18" stroke-width="2"/>
+  <text x="600" y="286" text-anchor="middle" fill="#f3f7f8" font-family="Arial, sans-serif" font-size="82" font-weight="700" letter-spacing="-2">TingLingDing</text>
+  <text x="600" y="354" text-anchor="middle" fill="#f3f7f8" fill-opacity=".78" font-family="Arial, sans-serif" font-size="30" letter-spacing="8">PHOTOGRAPHY</text>
+  <text x="600" y="456" text-anchor="middle" fill="#f3f7f8" fill-opacity=".68" font-family="Arial, sans-serif" font-size="22" letter-spacing="3">UNDERWATER · NATURE · PORTRAITS</text>
+</svg>

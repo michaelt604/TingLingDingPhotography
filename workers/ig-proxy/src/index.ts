@@ -8,7 +8,7 @@
  *   GET /underwater  → @tinglingdingphotography's media
  *   GET /portraits   → @tinglingdingportraits's media
  *
- * Caches every response at the Cloudflare edge for 1 hour so we don't
+ * Caches successful feed responses at the Cloudflare edge for 1 hour so we don't
  * hit the Graph API on every page load.
  *
  * ──────────────────────────────────────────────────────────────────
@@ -37,29 +37,44 @@
  *     keys, or access logs.
  *   - The cache key is a stable internal URL (`https://ig-cache/${side}`)
  *     — it never contains the token.
- *   - ALLOWED_ORIGIN defaults to your site domain in [env.production]
- *     of wrangler.toml. The "*" default is only used when the env var
- *     is unset (local dev).
+ *   - ALLOWED_ORIGIN is a comma-separated HTTPS allowlist. Both the
+ *     apex and www production origins are listed there. Each entry is
+ *     validated as an HTTPS URL with no credentials, no path beyond
+ *     "/", no query, and no fragment. Whitespace is trimmed and
+ *     duplicates are removed. The whole configuration fails closed
+ *     (503) if the binding is missing, blank, contains an empty
+ *     comma-delimited entry, or any entry is invalid.
+ *   - For browser requests the request's `Origin` header is compared
+ *     exactly against the normalized allowlist. Allowed requests get
+ *     `Access-Control-Allow-Origin` set to that exact origin; the
+ *     header is never a comma-separated value. Rejected requests,
+ *     including lookalikes and www/apex variants not listed, get a
+ *     generic 403 with the existing error body and `Cache-Control:
+ *     no-store`. Non-browser requests (no Origin header) continue
+ *     working and use a deterministic single configured origin for
+ *     any CORS response header.
  *   - `caches.default` is zone-wide; cached bodies are shared across
  *     origins. We re-apply CORS in jsonResponse() so the cached
  *     response is still origin-aware.
  */
 
-interface Env {
+export interface Env {
   IG_USER_ID_UNDERWATER: string;
   IG_ACCESS_TOKEN_UNDERWATER: string;
   IG_USER_ID_PORTRAITS: string;
   IG_ACCESS_TOKEN_PORTRAITS: string;
   /**
-   * Set to your site origin (e.g. "https://tinglingdingphotography.com")
-   * in wrangler.toml [env.production.vars]. Defaults to "*" for dev.
+   * Comma-separated HTTPS allowlist. Each entry must be an HTTPS URL
+   * with no credentials, no path beyond "/", no query, and no fragment.
+   * Whitespace is trimmed and exact-match duplicates are removed.
+   * Set in wrangler.toml [vars]. Fails closed when missing or invalid.
    */
   ALLOWED_ORIGIN?: string;
+  GRAPH_API_VERSION?: string;
 }
 
 const CACHE_TTL_SECONDS = 3600;
-const DEFAULT_ORIGIN = '*';
-const SITE_ORIGIN = 'https://tinglingdingphotography.com';
+export const DEFAULT_GRAPH_API_VERSION = 'v23.0';
 
 const CORS = (origin: string) => ({
   'Access-Control-Allow-Origin': origin,
@@ -71,21 +86,26 @@ const CORS = (origin: string) => ({
   'Vary': 'Origin',
 });
 
-const JSON_HEADERS = (origin: string) => ({
+const JSON_HEADERS = (origin: string, cacheControl: string) => ({
   ...CORS(origin),
   'Content-Type': 'application/json',
-  'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}`,
+  'Cache-Control': cacheControl,
 });
 
-function jsonResponse(body: unknown, origin: string, status = 200): Response {
+function jsonResponse(
+  body: unknown,
+  origin: string,
+  status = 200,
+  cacheControl = `public, max-age=${CACHE_TTL_SECONDS}`,
+): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: JSON_HEADERS(origin),
+    headers: JSON_HEADERS(origin, cacheControl),
   });
 }
 
-function errorResponse(message: string, origin: string, status = 500): Response {
-  return jsonResponse({ error: message }, origin, status);
+export function errorResponse(message: string, origin: string, status = 500): Response {
+  return jsonResponse({ error: message }, origin, status, 'no-store');
 }
 
 function routeFor(path: string, env: Env): { userId: string; accessToken: string } | null {
@@ -98,48 +118,137 @@ function routeFor(path: string, env: Env): { userId: string; accessToken: string
   return null;
 }
 
-const GRAPH_API_VERSION = 'v18.0';
 const MEDIA_FIELDS = 'id,media_type,media_url,permalink,thumbnail_url,caption,timestamp';
 
-// Resolves the response origin header.
-// ALLOWED_ORIGIN must be set in wrangler.toml [env.production.vars] for
-// production. For local dev with `wrangler dev`, the env var is unset
-// and we fall back to "*" for convenience.
-function resolveOrigin(env: Env): string {
-  return env.ALLOWED_ORIGIN || DEFAULT_ORIGIN;
+// Validates a single comma-delimited allowlist entry and returns the
+// normalized URL.origin, or null when the entry is empty, malformed, or
+// violates the strict HTTPS-origin policy.
+function validateOriginEntry(entry: string): string | null {
+  const trimmed = entry.trim();
+  if (!trimmed) return null;
+  let url: URL;
+  try {
+    url = new URL(trimmed);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:') return null;
+  if (url.username !== '' || url.password !== '') return null;
+  if (url.pathname !== '/') return null;
+  if (url.search !== '') return null;
+  if (url.hash !== '') return null;
+  return url.origin;
+}
+
+// Parses ALLOWED_ORIGIN as a comma-separated allowlist, validates every
+// entry, normalizes each valid URL to its .origin, and deduplicates
+// exact normalized origins. Returns the sorted, deduped list of
+// normalized origins, or null when the configuration is absent, blank,
+// contains an empty comma-delimited entry, or has any invalid entry.
+export function resolveAllowlist(env: Env): readonly string[] | null {
+  const raw = env.ALLOWED_ORIGIN;
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'string') return null;
+  const trimmedRaw = raw.trim();
+  if (!trimmedRaw) return null;
+  const entries = raw.split(',');
+  const origins = new Set<string>();
+  for (const entry of entries) {
+    const origin = validateOriginEntry(entry);
+    if (origin === null) return null;
+    origins.add(origin);
+  }
+  if (origins.size === 0) return null;
+  return Array.from(origins).sort();
+}
+
+// Resolves a deterministic single origin for non-browser CORS responses.
+// Returns the lexicographically smallest normalized origin from the
+// allowlist, or null when the configuration is missing/invalid.
+export function resolveOrigin(env: Env): string | null {
+  const allowlist = resolveAllowlist(env);
+  if (!allowlist) return null;
+  return allowlist[0];
+}
+
+export function resolveGraphApiVersion(env: Env): string | null {
+  const version = env.GRAPH_API_VERSION || DEFAULT_GRAPH_API_VERSION;
+  return /^v\d+\.\d+$/.test(version) ? version : null;
+}
+
+export function buildCacheKey(
+  side: string,
+  userId: string,
+  graphApiVersion: string,
+): Request {
+  const path = [graphApiVersion, userId, side].map(encodeURIComponent).join('/');
+  return new Request(`https://ig-cache.local/${path}`, { method: 'GET' });
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const origin = resolveOrigin(env);
+    const allowlist = resolveAllowlist(env);
+    const graphApiVersion = resolveGraphApiVersion(env);
+    const nonBrowserOrigin = allowlist ? allowlist[0] : null;
+
+    if (!allowlist || !graphApiVersion || nonBrowserOrigin === null) {
+      return new Response(
+        JSON.stringify({ error: 'Service configuration is incomplete.' }),
+        {
+          status: 503,
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+          },
+        },
+      );
+    }
+
+    const requestOrigin = request.headers.get('Origin');
+    let effectiveOrigin: string;
+    if (requestOrigin) {
+      if (!allowlist.includes(requestOrigin)) {
+        return errorResponse('Forbidden.', nonBrowserOrigin, 403);
+      }
+      effectiveOrigin = requestOrigin;
+    } else {
+      effectiveOrigin = nonBrowserOrigin;
+    }
 
     // CORS preflight
     if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: CORS(origin) });
+      return new Response(null, { status: 204, headers: CORS(effectiveOrigin) });
     }
 
     if (request.method !== 'GET') {
-      return errorResponse('Method not allowed', origin, 405);
+      return errorResponse('Method not allowed', effectiveOrigin, 405);
     }
 
     // Health check
     const url = new URL(request.url);
     if (url.pathname === '/' || url.pathname === '/health') {
-      return jsonResponse({ ok: true, version: GRAPH_API_VERSION }, origin);
+      const ready = Boolean(
+        env.IG_USER_ID_UNDERWATER &&
+        env.IG_ACCESS_TOKEN_UNDERWATER &&
+        env.IG_USER_ID_PORTRAITS &&
+        env.IG_ACCESS_TOKEN_PORTRAITS,
+      );
+      return jsonResponse(
+        { ok: ready, version: graphApiVersion },
+        effectiveOrigin,
+        ready ? 200 : 503,
+        'no-store',
+      );
     }
 
     const side = url.pathname.replace(/^\//, '');
     const route = routeFor(side, env);
     if (!route) {
-      return errorResponse(`Unknown route: ${side}. Use /underwater or /portraits.`, origin, 404);
+      return errorResponse(`Unknown route: ${side}. Use /underwater or /portraits.`, effectiveOrigin, 404);
     }
 
     if (!route.userId || !route.accessToken) {
-      return errorResponse(
-        `Missing secrets for ${side}. Set IG_USER_ID_${side.toUpperCase()} and IG_ACCESS_TOKEN_${side.toUpperCase()}.`,
-        origin,
-        500,
-      );
+      return errorResponse('Service configuration is incomplete.', effectiveOrigin, 503);
     }
 
     // Cache key: stable, internal, NEVER includes the token.
@@ -147,11 +256,11 @@ export default {
     // the key (since we used to send it as a query param). Now the
     // token goes in the Authorization header instead, so we can use
     // a clean internal key.
-    const cacheKey = new Request(`https://ig-cache.local/${side}`, { method: 'GET' });
+    const cacheKey = buildCacheKey(side, route.userId, graphApiVersion);
 
     // Build the upstream request WITH the token in a Bearer header.
     const igUrl =
-      `https://graph.instagram.com/${GRAPH_API_VERSION}/${route.userId}/media` +
+      `https://graph.instagram.com/${graphApiVersion}/${route.userId}/media` +
       `?fields=${MEDIA_FIELDS}` +
       `&limit=9`;
 
@@ -160,7 +269,7 @@ export default {
       const cached = await cache.match(cacheKey);
       if (cached) {
         const body = await cached.json();
-        return jsonResponse(body, origin);
+        return jsonResponse(body, effectiveOrigin);
       }
 
       const upstream = await fetch(igUrl, {
@@ -169,14 +278,11 @@ export default {
         },
       });
       if (!upstream.ok) {
-        // Don't cache errors; let the user retry.
-        const txt = await upstream.text();
-        // Trim the upstream error so we don't leak large upstream payloads.
-        return errorResponse(
-          `Instagram API ${upstream.status}: ${txt.slice(0, 200)}`,
-          origin,
-          502,
-        );
+        console.error('Instagram API request failed', {
+          side,
+          status: upstream.status,
+        });
+        return errorResponse('Instagram feed is temporarily unavailable.', effectiveOrigin, 502);
       }
 
       const data = await upstream.json();
@@ -185,9 +291,13 @@ export default {
         headers: { 'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}` },
       });
       await cache.put(cacheKey, cacheable.clone());
-      return jsonResponse(data, origin);
-    } catch (e) {
-      return errorResponse(`Fetch failed: ${e instanceof Error ? e.message : String(e)}`, origin);
+      return jsonResponse(data, effectiveOrigin);
+    } catch (error) {
+      console.error(
+        'Instagram proxy request failed',
+        error instanceof Error ? error.name : 'UnknownError',
+      );
+      return errorResponse('Instagram feed is temporarily unavailable.', effectiveOrigin, 502);
     }
   },
 } satisfies ExportedHandler<Env>;

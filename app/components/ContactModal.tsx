@@ -7,6 +7,7 @@ import styles from './ContactModal.module.css';
 interface Props {
   open: boolean;
   onClose: () => void;
+  side: 'underwater' | 'portraits';
 }
 
 /**
@@ -22,7 +23,7 @@ interface Props {
  *  - Returns focus to the trigger element on close
  *  - role="dialog" + aria-modal="true" for screen readers
  */
-export function ContactModal({ open, onClose }: Props) {
+export function ContactModal({ open, onClose, side }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
@@ -71,8 +72,9 @@ export function ContactModal({ open, onClose }: Props) {
 
       // Length > 0 guarantees these are defined, but with
       // noUncheckedIndexedAccess TS doesn't know that.
-      const first = focusable[0]!;
-      const last = focusable[focusable.length - 1]!;
+      const [first] = focusable;
+      const last = focusable.at(-1);
+      if (!first || !last) return;
       const active = document.activeElement as HTMLElement;
 
       if (e.shiftKey) {
@@ -102,13 +104,19 @@ export function ContactModal({ open, onClose }: Props) {
   return (
     <div
       className={styles.overlay}
-      onClick={onClose}
+      data-side={side === 'underwater' ? 'underwater' : 'portrait'}
       role="presentation"
     >
+      <button
+        type="button"
+        className={styles.backdrop}
+        onClick={onClose}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
       <div
         ref={dialogRef}
         className={styles.dialog}
-        onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby="contact-modal-title"
@@ -128,8 +136,8 @@ export function ContactModal({ open, onClose }: Props) {
 
         <Contact
           heading="Get in touch"
-          side="portraits"
-          onAfterSubmit={onClose}
+          headingId="contact-modal-title"
+          side={side}
         />
       </div>
     </div>

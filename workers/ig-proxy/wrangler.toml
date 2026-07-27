@@ -3,6 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+ALLOWED_ORIGIN = "https://tinglingdingphotography.com,https://www.tinglingdingphotography.com"
+GRAPH_API_VERSION = "v23.0"
+
 # Secrets (set these with `wrangler secret put`):
 #   IG_USER_ID_UNDERWATER
 #   IG_ACCESS_TOKEN_UNDERWATER
@@ -21,5 +25,3 @@ compatibility_flags = ["nodejs_compat"]
 # proxy can't be abused from arbitrary origins (which would burn the
 # IG rate limit). Override locally with:
 #   wrangler dev --var ALLOWED_ORIGIN:http://localhost:3000
-[env.production]
-vars = { ALLOWED_ORIGIN = "https://tinglingdingphotography.com" }

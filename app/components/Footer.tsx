@@ -11,7 +11,10 @@ export function Footer({ side = 'hub', igHandle, igProfileUrl }: Props) {
   const year = new Date().getFullYear();
 
   return (
-    <footer className={styles.footer}>
+    <footer
+      className={styles.footer}
+      data-side={side === 'portraits' ? 'portrait' : side}
+    >
       <div className="container">
         <div className={styles.inner}>
           <div className={styles.brand}>

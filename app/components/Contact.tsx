@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, type FormEvent } from 'react';
+import { buildContactMailto, CONTACT_EMAIL } from './contactMailto';
 import styles from './Contact.module.css';
-
-const TO_EMAIL = 'tinglingdingphotography@gmail.com';
 
 interface FieldProps {
   id: string;
@@ -50,10 +49,9 @@ function Field({ id, label, value, onChange, type = 'text', textarea, required, 
 
 interface Props {
   heading?: string;
+  headingId?: string;
   /** Side the contact section is on — only affects the placeholder text */
   side?: 'underwater' | 'portraits';
-  /** Called after the mailto: link fires. Useful for closing a modal wrapper. */
-  onAfterSubmit?: () => void;
 }
 
 /**
@@ -67,33 +65,23 @@ interface Props {
  */
 export function Contact({
   heading = 'Get in touch',
+  headingId,
   side = 'portraits',
-  onAfterSubmit,
 }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [topic, setTopic] = useState('');
   const [message, setMessage] = useState('');
+  const [status, setStatus] = useState('');
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    const subject = (topic.trim() || 'Inquiry from your photography site').trim();
-
-    // Build the body in the right order, dropping empty fields.
-    const parts: string[] = [];
-    if (name.trim()) parts.push(`Name: ${name.trim()}`);
-    if (email.trim()) parts.push(`Email: ${email.trim()}`);
-    if (message.trim()) parts.push('', message.trim());
-    const body = parts.join('\n');
-
-    const href =
-      `mailto:${TO_EMAIL}` +
-      `?subject=${encodeURIComponent(subject)}` +
-      `&body=${encodeURIComponent(body)}`;
-
-    window.location.href = href;
-    onAfterSubmit?.();
+    const href = buildContactMailto({ name, email, topic, message });
+    setStatus(
+      'Your email app should open with this message. If it does not, use the direct email link below.',
+    );
+    window.location.assign(href);
   };
 
   const placeholderTopic =
@@ -105,12 +93,12 @@ export function Contact({
     <section className={styles.contact} id="contact" aria-label="Contact">
       <div className="container">
         <div className={styles.inner}>
-          <h2 className={styles.title}>{heading}</h2>
+          <h2 className={styles.title} id={headingId}>{heading}</h2>
 
           <form
             className={styles.form}
             onSubmit={onSubmit}
-            action={`mailto:${TO_EMAIL}`}
+            action={`mailto:${CONTACT_EMAIL}`}
             method="post"
             encType="text/plain"
           >
@@ -158,10 +146,13 @@ export function Contact({
                   <path d="m12 5 7 7-7 7" />
                 </svg>
               </button>
-              <a className={styles.direct} href={`mailto:${TO_EMAIL}`}>
-                or email {TO_EMAIL}
+              <a className={styles.direct} href={`mailto:${CONTACT_EMAIL}`}>
+                or email {CONTACT_EMAIL}
               </a>
             </div>
+            <p className={styles.status} role="status" aria-live="polite">
+              {status}
+            </p>
           </form>
         </div>
       </div>

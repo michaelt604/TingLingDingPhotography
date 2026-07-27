@@ -50,26 +50,32 @@
 
 .embed { width: 100%; }
 
-.placeholder { position: relative; }
+.placeholder {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  padding: clamp(36px, 7vw, 72px) 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-2);
+  text-align: center;
+}
+
+.placeholderTitle {
+  color: var(--ink);
+  font-size: clamp(20px, 3vw, 28px);
+  line-height: 1.2;
+}
 
 .placeholderNote {
-  margin: 0 0 20px;
+  margin: 0;
   font-family: var(--ff-mono);
   font-size: 11px;
   letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--ink-mute);
   text-align: center;
+  max-width: 52ch;
 }
-.placeholderNote code {
-  font-family: var(--ff-mono);
-  color: var(--ink-soft);
-  background: var(--bg-2);
-  padding: 1px 6px;
-  border-radius: 4px;
-  font-size: 10px;
-}
-
 .grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -102,25 +108,3 @@
   transition: transform 400ms ease;
 }
 .tile:hover .tileImage { transform: scale(1.04); }
-
-/* Per-tile gradient variation for the placeholder look.
-   The data-side scoping picks the right palette. */
-.tile[data-tile="1"] { background: linear-gradient(135deg, #0c2733 0%, #143b48 100%); }
-.tile[data-tile="2"] { background: linear-gradient(135deg, #0a2030 0%, #1a4858 100%); }
-.tile[data-tile="3"] { background: linear-gradient(135deg, #0e2030 0%, #2a5a7a 100%); }
-.tile[data-tile="4"] { background: linear-gradient(135deg, #06151c 0%, #1a3a4a 100%); }
-.tile[data-tile="5"] { background: linear-gradient(135deg, #143b48 0%, #0c2733 100%); }
-.tile[data-tile="6"] { background: linear-gradient(135deg, #0a2030 0%, #0c2733 100%); }
-.tile[data-tile="7"] { background: linear-gradient(135deg, #163048 0%, #0e2030 100%); }
-.tile[data-tile="8"] { background: linear-gradient(135deg, #0c2733 0%, #1a4858 100%); }
-.tile[data-tile="9"] { background: linear-gradient(135deg, #2a5a7a 0%, #0a2030 100%); }
-
-[data-side="portrait"] .tile[data-tile="1"] { background: linear-gradient(135deg, #2a1850 0%, #3a1c5c 100%); }
-[data-side="portrait"] .tile[data-tile="2"] { background: linear-gradient(135deg, #1a0a2e 0%, #3a2068 100%); }
-[data-side="portrait"] .tile[data-tile="3"] { background: linear-gradient(135deg, #2a1850 0%, #4a2a78 100%); }
-[data-side="portrait"] .tile[data-tile="4"] { background: linear-gradient(135deg, #14082a 0%, #2a1850 100%); }
-[data-side="portrait"] .tile[data-tile="5"] { background: linear-gradient(135deg, #3a2068 0%, #2a1850 100%); }
-[data-side="portrait"] .tile[data-tile="6"] { background: linear-gradient(135deg, #1a0a2e 0%, #2a1850 100%); }
-[data-side="portrait"] .tile[data-tile="7"] { background: linear-gradient(135deg, #3a1c5c 0%, #1a0a2e 100%); }
-[data-side="portrait"] .tile[data-tile="8"] { background: linear-gradient(135deg, #2a1850 0%, #3a2068 100%); }
-[data-side="portrait"] .tile[data-tile="9"] { background: linear-gradient(135deg, #4a2a78 0%, #1a0a2e 100%); }
