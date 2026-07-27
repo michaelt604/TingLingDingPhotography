@@ -263,6 +263,54 @@
   height: 100%;
   object-fit: contain;
 }
+/*
+ * Lightbox prev/next arrows. Rendered as siblings of <Image> inside
+ * .lightboxImageWrap so they anchor to the image container rather than
+ * the viewport edges, and only appear when movement is possible.
+ * Keep the carousel's subtle edge-gated look (faint until hovered) so the
+ * photo stays the focal point. Bumped to a 44px hit area on mobile.
+ */
+.lightboxArrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-glass);
+  color: var(--ink);
+  opacity: 0.56;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: opacity 180ms ease, background 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+.lightboxArrow:hover {
+  opacity: 1;
+  background: var(--bg);
+  border-color: var(--ink-soft);
+}
+.lightboxArrow:focus-visible {
+  opacity: 1;
+  background: var(--bg);
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.lightboxArrow:active {
+  transform: translateY(-50%) scale(0.94);
+}
+.lightboxArrowPrev { left: 8px; }
+.lightboxArrowNext { right: 8px; }
+/* Touch-friendly sizing — bump the hit area on small screens. */
+@media (max-width: 540px) {
+  .lightboxArrow { width: 44px; height: 44px; }
+}
 .lightboxClose {
   position: absolute;
   inset-block-start: max(12px, env(safe-area-inset-top, 0px));
@@ -352,6 +400,7 @@
   .tile,
   .carouselButton,
   .lightbox,
+  .lightboxArrow,
   .lightboxInstagram,
   .tileInstagramLink {
     transition: none;

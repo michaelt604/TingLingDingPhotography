@@ -530,9 +530,9 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
       <div className={styles.lightboxContent}>
         <button type="button" className={styles.lightboxClose} onClick={onClose} aria-label="Close photo viewer"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12" /><path d="M18 6L6 18" /></svg></button>
         <div className={styles.lightboxImageWrap} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp}>
-          {canPrev ? <button type="button" className={`${styles.carouselButton} ${styles.carouselButtonPrev}`} onClick={onPrev} aria-label="Previous photo"><span aria-hidden="true">‹</span></button> : null}
+          {canPrev ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowPrev}`} onClick={onPrev} aria-label="Previous photo"><span aria-hidden="true">‹</span></button> : null}
           <Image src={src} alt={alt} fill sizes="100vw" unoptimized className={styles.lightboxImage} />
-          {canNext ? <button type="button" className={`${styles.carouselButton} ${styles.carouselButtonNext}`} onClick={onNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
+          {canNext ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowNext}`} onClick={onNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
         </div>
         <a href={permalink} target="_blank" rel="noopener noreferrer" className={styles.lightboxInstagram} aria-label={`Open this photo on Instagram in a new tab: ${alt}`}><span>View on Instagram</span></a>
       </div>
