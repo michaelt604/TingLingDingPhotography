@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent, type RefObject } from 'react';
 import Image from 'next/image';
 import { normalizeInstagramPosts, type IGPost } from './instagramData';
 import styles from './InstagramFeed.module.css';
@@ -374,110 +374,104 @@ interface PostTileProps {
  * VIDEO posts — and CAROUSEL_ALBUM posts without children — fall back
  * to the parent's media_url (and thumbnail for VIDEO).
  *
- * The tile is a <div> wrapper. The link to Instagram is an absolutely
- * positioned <a> filling the wrapper; carousel buttons are siblings of
- * the link (also absolutely positioned) so the DOM stays valid (no
- * <button> inside <a>) and clicks on the buttons do not propagate to
- * the link.
+ * The image is a real <button> (TileImageButton) that opens the
+ * lightbox viewer. Carousel arrows are siblings of the image button,
+ * sitting above it in z-order so a tap on a chevron does not also
+ * open the viewer. The Instagram permalink lives ONLY inside the
+ * lightbox; there is no direct tile-level link anymore.
  */
 function PostTile({ post, handle }: PostTileProps) {
   const isCarousel = post.media_type === 'CAROUSEL_ALBUM';
   const children = isCarousel && Array.isArray(post.children) ? post.children : null;
-  // A carousel needs at least one navigable child item to show its
-  // controls. With zero children we fall back to the parent's own
-  // media_url — IG sets that to the first child's media_url for
-  // CAROUSEL_ALBUM posts, so the visual result is the same.
   const slides = children && children.length > 0 ? children : null;
-
-  const label = post.caption
-    ? post.caption.replace(/\s+/g, ' ').trim().slice(0, 100)
-    : `Instagram post by @${handle}`;
-
-  const fallbackSrc =
-    post.media_type === 'VIDEO' && post.thumbnail_url
-      ? post.thumbnail_url
-      : post.media_url;
-
-  // Local carousel index lives in PostTile so we render a single
-  // <Image> per tile. The buttons live in <CarouselControls> and
-  // mutate the index via callbacks; when the index changes we swap
-  // the <Image> src in place — no remount, no double-load.
+  const label = post.caption ? post.caption.replace(/\s+/g, ' ').trim().slice(0, 100) : `Instagram post by @${handle}`;
+  const fallbackSrc = post.media_type === 'VIDEO' && post.thumbnail_url ? post.thumbnail_url : post.media_url;
   const [slideIndex, setSlideIndex] = useState(0);
   const totalSlides = slides?.length ?? 0;
   const safeIndex = totalSlides === 0 ? 0 : Math.min(slideIndex, totalSlides - 1);
   const currentChild = slides ? slides[safeIndex] : undefined;
-  const currentSrc =
-    currentChild === undefined
-      ? fallbackSrc
-      : currentChild.media_type === 'VIDEO' && currentChild.thumbnail_url
-        ? currentChild.thumbnail_url
-        : currentChild.media_url;
-  const goPrev = useCallback(() => {
-    if (totalSlides <= 1) return;
-    setSlideIndex((current) => (current <= 0 ? totalSlides - 1 : current - 1));
-  }, [totalSlides]);
-  const goNext = useCallback(() => {
-    if (totalSlides <= 1) return;
-    setSlideIndex((current) => (current >= totalSlides - 1 ? 0 : current + 1));
-  }, [totalSlides]);
-
+  const currentSrc = currentChild === undefined ? fallbackSrc : currentChild.media_type === 'VIDEO' && currentChild.thumbnail_url ? currentChild.thumbnail_url : currentChild.media_url;
+  const goPrev = useCallback(() => setSlideIndex((current) => Math.max(0, current - 1)), []);
+  const goNext = useCallback(() => setSlideIndex((current) => Math.min(totalSlides - 1, current + 1)), [totalSlides]);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  const suppressClick = useRef(false);
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    swipeStart.current = { x: event.clientX, y: event.clientY };
+    suppressClick.current = false;
+  }, []);
+  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
+    const start = swipeStart.current;
+    swipeStart.current = null;
+    if (!start || !slides || slides.length < 2) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (Math.abs(dx) < 48 || Math.abs(dy) > Math.abs(dx)) return;
+    suppressClick.current = true;
+    if (dx < 0) goNext(); else goPrev();
+  }, [goNext, goPrev, slides]);
+  const openLightbox = useCallback(() => {
+    if (suppressClick.current) { suppressClick.current = false; return; }
+    setLightboxOpen(true);
+  }, []);
+  const closeLightbox = useCallback(() => {
+    setLightboxOpen(false);
+    const trigger = triggerRef.current;
+    if (trigger) requestAnimationFrame(() => trigger.focus());
+  }, []);
+  const canPrev = slides !== null && slides.length > 1 && safeIndex > 0;
+  const canNext = slides !== null && slides.length > 1 && safeIndex < totalSlides - 1;
   return (
     <div className={styles.tile}>
-      <TileImage src={currentSrc} />
-      <a
-        className={styles.tileLink}
-        href={post.permalink}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label={label}
-      >
-        <span className={styles.srOnly}>{label}</span>
-      </a>
-      {slides && slides.length > 1 ? (
-        <CarouselControls
-          safeIndex={safeIndex}
-          totalSlides={totalSlides}
-          onPrev={goPrev}
-          onNext={goNext}
-        />
-      ) : null}
+      <TileImageButton src={currentSrc} label={label} onOpen={openLightbox} triggerRef={triggerRef} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} />
+      {canPrev || canNext ? <CarouselControls canPrev={canPrev} canNext={canNext} safeIndex={safeIndex} totalSlides={totalSlides} onPrev={goPrev} onNext={goNext} /> : null}
+      {lightboxOpen ? <Lightbox src={currentSrc} alt={label} permalink={post.permalink} onClose={closeLightbox} canPrev={canPrev} canNext={canNext} onPrev={goPrev} onNext={goNext} onSwipePrev={goPrev} onSwipeNext={goNext} /> : null}
     </div>
   );
 }
 
 interface CarouselControlsProps {
+  canPrev: boolean;
+  canNext: boolean;
   safeIndex: number;
   totalSlides: number;
   onPrev: () => void;
   onNext: () => void;
 }
 
-function CarouselControls({ safeIndex, totalSlides, onPrev, onNext }: CarouselControlsProps) {
+function CarouselControls({ canPrev, canNext, safeIndex, totalSlides, onPrev, onNext }: CarouselControlsProps) {
   // Buttons are absolutely positioned over the image inside the tile.
-  // They sit ABOVE the link overlay in z-order, so clicks land on the
-  // buttons instead of navigating to Instagram.
+  // They sit above the image-trigger button in z-order, so a tap lands
+  // on the carousel control instead of opening the lightbox. We render
+  // only the arrows that can actually move — first slide shows Next
+  // only, last slide shows Prev only, middle shows both. No wrapping.
   return (
     <>
-      <button
-        type="button"
-        className={`${styles.carouselButton} ${styles.carouselButtonPrev}`}
-        onClick={onPrev}
-        aria-label={`Previous photo (${safeIndex + 1} of ${totalSlides})`}
-      >
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M15 18l-6-6 6-6" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        className={`${styles.carouselButton} ${styles.carouselButtonNext}`}
-        onClick={onNext}
-        aria-label={`Next photo (${safeIndex + 1} of ${totalSlides})`}
-      >
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M9 6l6 6-6 6" />
-        </svg>
-      </button>
+      {canPrev ? (
+        <button
+          type="button"
+          className={`${styles.carouselButton} ${styles.carouselButtonPrev}`}
+          onClick={onPrev}
+          aria-label={`Previous photo (${safeIndex + 1} of ${totalSlides})`}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+        </button>
+      ) : null}
+      {canNext ? (
+        <button
+          type="button"
+          className={`${styles.carouselButton} ${styles.carouselButtonNext}`}
+          onClick={onNext}
+          aria-label={`Next photo (${safeIndex + 1} of ${totalSlides})`}
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 6l6 6-6 6" />
+          </svg>
+        </button>
+      ) : null}
       <span className={styles.carouselIndicator} aria-live="polite">
         {safeIndex + 1}/{totalSlides}
       </span>
@@ -485,20 +479,64 @@ function CarouselControls({ safeIndex, totalSlides, onPrev, onNext }: CarouselCo
   );
 }
 
-interface TileImageProps {
+interface TileImageButtonProps {
   src: string;
+  label: string;
+  onOpen: () => void;
+  triggerRef: RefObject<HTMLButtonElement | null>;
+  onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void;
+  onPointerUp: (event: PointerEvent<HTMLButtonElement>) => void;
+}
+function TileImageButton({ src, label, onOpen, triggerRef, onPointerDown, onPointerUp }: TileImageButtonProps) {
+  return (
+    <button ref={triggerRef} type="button" className={styles.tileImageButton} onClick={onOpen} onPointerDown={onPointerDown} onPointerUp={onPointerUp} aria-label={`View photo: ${label}`}>
+      <Image src={src} alt="" fill sizes="(min-width: 1024px) 30vw, (min-width: 540px) 33vw, 50vw" unoptimized className={styles.tileImage} />
+    </button>
+  );
+}
+interface LightboxProps {
+  src: string;
+  alt: string;
+  permalink: string;
+  onClose: () => void;
+  canPrev: boolean;
+  canNext: boolean;
+  onPrev: () => void;
+  onNext: () => void;
+  onSwipePrev: () => void;
+  onSwipeNext: () => void;
 }
 
-function TileImage({ src }: TileImageProps) {
+function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNext, onSwipePrev, onSwipeNext }: LightboxProps) {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
+    return () => { document.body.style.overflow = previousOverflow; document.body.style.paddingRight = previousPaddingRight; };
+  }, []);
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } };
+    document.addEventListener('keydown', handleKey); return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+  const handleBackdropClick = useCallback((event: MouseEvent<HTMLDivElement>) => { if (event.target === event.currentTarget) onClose(); }, [onClose]);
+  const handleBackdropKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onClose(); } }, [onClose]);
+  const swipeStart = useRef<{ x: number; y: number } | null>(null);
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => { swipeStart.current = { x: event.clientX, y: event.clientY }; };
+  const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => { const start = swipeStart.current; swipeStart.current = null; if (!start) return; const dx = event.clientX - start.x; const dy = event.clientY - start.y; if (Math.abs(dx) < 48 || Math.abs(dy) > Math.abs(dx)) return; if (dx < 0) onSwipeNext(); else onSwipePrev(); };
   return (
-    <Image
-      src={src}
-      alt=""
-      fill
-      sizes="(min-width: 1024px) 30vw, (min-width: 540px) 33vw, 50vw"
-      unoptimized
-      className={styles.tileImage}
-    />
+    <div className={`${styles.lightbox} ${styles.lightboxOpen}`} role="dialog" aria-modal="true" aria-label={`Photo viewer: ${alt}`} tabIndex={-1} onClick={handleBackdropClick} onKeyDown={handleBackdropKeyDown}>
+      <div className={styles.lightboxContent}>
+        <button type="button" className={styles.lightboxClose} onClick={onClose} aria-label="Close photo viewer"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12" /><path d="M18 6L6 18" /></svg></button>
+        <div className={styles.lightboxImageWrap} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp}>
+          {canPrev ? <button type="button" className={`${styles.carouselButton} ${styles.carouselButtonPrev}`} onClick={onPrev} aria-label="Previous photo"><span aria-hidden="true">‹</span></button> : null}
+          <Image src={src} alt={alt} fill sizes="100vw" unoptimized className={styles.lightboxImage} />
+          {canNext ? <button type="button" className={`${styles.carouselButton} ${styles.carouselButtonNext}`} onClick={onNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
+        </div>
+        <a href={permalink} target="_blank" rel="noopener noreferrer" className={styles.lightboxInstagram} aria-label={`Open this photo on Instagram in a new tab: ${alt}`}><span>View on Instagram</span></a>
+      </div>
+    </div>
   );
 }
 
