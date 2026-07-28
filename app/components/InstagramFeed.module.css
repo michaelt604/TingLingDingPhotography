@@ -228,10 +228,11 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  /* Shrink-wrap around the image + arrows so clicks outside the visible
+  /* Shrink-wraps to the image + arrows so clicks outside the visible
    * photo bubble up to the .lightbox root and trigger onClose. The
-   * max-width/max-height clamp the wrap to the viewport minus the
-   * dialog's safe-area padding. */
+   * wrap below is the only thing that needs viewport-anchored bounds
+   * (so the photo can't overflow); the content box itself just sits
+   * inside the lightbox's grid container and centres everything. */
   width: fit-content;
   height: fit-content;
   max-width: calc(100vw - 40px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
@@ -239,25 +240,32 @@
 }
 .lightboxImageWrap {
   position: relative;
-  /* Inline-block so the wrap shrinks to fit the actual <img> dimensions;
-   * the prev/next arrows are positioned absolutely against these bounds,
-   * so they sit flush against the photo rather than the viewport edges. */
+  /* Inline-block + no width/height of its own — the wrap shrink-fits
+   * to the rendered <img> dimensions. The image's max-width /
+   * max-height are viewport-anchored (with safe-area subtracts),
+   * so the photo can never overflow the screen regardless of how
+   * tall/short the carousel sibling is. The arrows are siblings
+   * of <img> with `position: absolute`, so they anchor to the
+   * wrap (i.e. to the actual photo bounds) rather than the
+   * viewport edges. */
   display: inline-block;
-  max-width: 100%;
-  max-height: 100%;
+  max-width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  max-height: calc(100dvh - 120px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   touch-action: pan-y pinch-zoom;
 }
 .lightboxImage {
-  /* Responsive intrinsic-ratio image: the browser uses the natural width
-   * and height attributes to derive the aspect ratio, then scales the
-   * rendered <img> down to fit the wrap without distorting it. width:auto
-   * + height:auto (the default) preserves aspect ratio; the explicit
-   * max-width/max-height on the wrap keeps the photo inside the viewport. */
+  /* Shrink-to-fit inside the viewport while preserving the natural
+   * aspect ratio. `width:auto; height:auto` makes the browser pick
+   * the largest size that fits both max-width and max-height
+   * without distorting the photo. The wrap inline-block above
+   * shrink-wraps to whatever pixel dimensions the browser ends up
+   * using, so the absolutely-positioned arrows stay glued to the
+   * photo's edges. */
   display: block;
-  max-width: 100%;
-  max-height: 100%;
   width: auto;
   height: auto;
+  max-width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  max-height: calc(100dvh - 120px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   object-fit: contain;
 }
 /*
