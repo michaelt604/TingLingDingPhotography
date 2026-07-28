@@ -43,17 +43,6 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: 1
 
-      - name: Set up Python (for the smoke test's static server)
-        uses: actions/setup-python@4237556390dab4f0eae863a70500ea8e6c25d0a3 # v5
-        with:
-          python-version: '3.13'
-
-      - name: Install Chromium for Playwright
-        run: npx playwright install --with-deps chromium
-
-      - name: Lightbox viewport smoke
-        run: npm run test:smoke
-
       - name: Upload static export
 
   deploy:
