@@ -525,20 +525,9 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
   const underRef = useRef<HTMLImageElement | null>(null);
   const [underSrc, setUnderSrc] = useState<string | null>(null);
   const [underAlt, setUnderAlt] = useState('');
-  // Opacity of the under-layer. Starts at 1 (matches the layer it
-  // replaces), then a requestAnimationFrame drops it to 0 so the
-  // CSS opacity transition fires. We never reset to 1 - the under-
-  // layer unmounts on transitionend and the next mount comes back
-  // at the default 1, ready to fade out again.
-  const [underOpacity, setUnderOpacity] = useState(1);
-  // Flip opacity 1 -> 0 exactly one frame after `underSrc` mounts so
-  // the CSS transition has a non-trivial starting value to animate
-  // from. Without this the layer paints and stays at opacity 1.
-  useEffect(() => {
-    if (underSrc === null) return;
-    const id = requestAnimationFrame(() => setUnderOpacity(0));
-    return () => cancelAnimationFrame(id);
-  }, [underSrc]);
+  // The under-layer is removed via onAnimationEnd (filtered by
+  // animationName). No opacity state needed - the @keyframes
+  // fades 1 -> 0 over 220ms and React unmounts on animationend.
   const handlePrev = useCallback(() => {
     prevSrcRef.current = src; prevAltRef.current = alt;
     setUnderSrc(src); setUnderAlt(alt);
@@ -590,12 +579,11 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
     if (Math.abs(dx) < 48 || Math.abs(dy) > Math.abs(dx)) return;
     if (dx < 0) handleSwipeNext(); else handleSwipePrev();
   };
-  // Transitionend on the under-layer fires once the cross-fade
-  // (opacity 1 -> 0) completes; unmount it so the next swap starts
-  // clean. Filter by `e.propertyName` because every opacity change
-  // would otherwise retrigger this if we listen to all events.
-  const onUnderTransitionEnd = useCallback((event: React.TransitionEvent<HTMLImageElement>) => {
-    if (event.propertyName !== 'opacity') return;
+  // animationend fires once the @keyframes fade completes. The
+  // under-layer only has one animation attached, so we don't need
+  // to filter by animation name (and the CSS-module-scoped name
+  // isn't reliably exposed at runtime).
+  const onUnderAnimationEnd = useCallback(() => {
     setUnderSrc(null); setUnderAlt('');
     prevSrcRef.current = null; prevAltRef.current = '';
   }, []);
@@ -610,9 +598,10 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
            * and let `.lightboxImage` fade its opacity 1 -> 0 via the
            * the live src; opacity 1 throughout. Both use natural
            * sizing so the wrap shrink-fits and arrows stay anchored. */}
-          {underSrc ? <img ref={underRef} src={underSrc} alt={underAlt} decoding="async" aria-hidden="true" className={`${styles.lightboxImage} ${styles.lightboxUnder}`} style={{ opacity: underOpacity }} onTransitionEnd={onUnderTransitionEnd} /> : null}
+          {underSrc ? <img ref={underRef} src={underSrc} alt={underAlt} decoding="async" aria-hidden="true" className={`${styles.lightboxImage} ${styles.lightboxUnder}`} onAnimationEnd={onUnderAnimationEnd} /> : null}
           {/* biome-ignore lint/performance/noImgElement: see above */}
           <img src={src} alt={alt} decoding="async" className={styles.lightboxImage} />
+          {canNext ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowNext}`} onClick={handleNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
         </div>
         <a href={permalink} target="_blank" rel="noopener noreferrer" className={styles.lightboxInstagram} aria-label={`Open this photo on Instagram in a new tab: ${alt}`}><span>View on Instagram</span></a>
       </div>

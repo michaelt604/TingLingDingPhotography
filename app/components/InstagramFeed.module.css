@@ -301,8 +301,19 @@
   position: absolute;
   inset: 0;
   margin: auto;
-  transition: opacity 220ms ease;
   pointer-events: none;
+  /* Mount-driven fade: the under-layer unmounts and re-mounts
+   * fresh on every carousel swap, so the keyframes always plays
+   * from frame 0. No `opacity` baseline needed - the keyframes
+   * owns the animation start (`from { opacity: 1 }`) and end. */
+  animation: lightboxUnderFade 220ms ease forwards;
+}
+/* Always-on keyframes. The animation name is matched in JS
+ * (onAnimationEnd filters by it) so a hover transform/animation
+ * on the same node can't trip the cleanup prematurely. */
+@keyframes lightboxUnderFade {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 /*
  * Lightbox prev/next arrows. Rendered as siblings of <Image> inside
