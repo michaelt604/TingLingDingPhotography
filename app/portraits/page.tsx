@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { SiteNav } from '../components/SiteNav';
 import { InstagramFeed } from '../components/InstagramFeed';
 import { Footer } from '../components/Footer';
-import styles from './page.module.css';
 
 export const metadata: Metadata = {
   title: 'Portraits',
@@ -24,7 +23,7 @@ export default function PortraitsPage() {
       <SiteNav current="portraits" />
 
       <main id="main" tabIndex={-1}>
-        <h1 className={styles.srOnly}>Portraits</h1>
+        <h1 className="srOnly">Portraits</h1>
         {/* INSTAGRAM — main content */}
         <InstagramFeed
           handle={IG_HANDLE}

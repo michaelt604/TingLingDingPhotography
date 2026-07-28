@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { SiteNav } from '../components/SiteNav';
 import { InstagramFeed } from '../components/InstagramFeed';
 import { Footer } from '../components/Footer';
-import styles from './page.module.css';
 
 export const metadata: Metadata = {
   title: 'Underwater & Nature',
@@ -24,7 +23,7 @@ export default function UnderwaterPage() {
       <SiteNav current="underwater" />
 
       <main id="main" tabIndex={-1}>
-        <h1 className={styles.srOnly}>The world below the surface.</h1>
+        <h1 className="srOnly">The world below the surface.</h1>
 
         {/* INSTAGRAM — main content */}
         <InstagramFeed

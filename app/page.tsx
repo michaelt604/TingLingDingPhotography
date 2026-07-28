@@ -17,7 +17,7 @@ export default function HubPage() {
             className={styles.halfMainLink}
             aria-label="Enter underwater & nature"
           />
-          <div className={styles.halfContent} aria-hidden="true">
+          <div className={styles.halfContent}>
             <h1 className={`display ${styles.halfTitle}`}>
               Underwater<br />&amp; Nature
             </h1>
@@ -41,7 +41,7 @@ export default function HubPage() {
             className={styles.halfMainLink}
             aria-label="Enter portraits"
           />
-          <div className={styles.halfContent} aria-hidden="true">
+          <div className={styles.halfContent}>
             <h1 className={`display ${styles.halfTitle}`}>
               Portraits
             </h1>

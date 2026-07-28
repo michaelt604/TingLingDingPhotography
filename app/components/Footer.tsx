@@ -9,7 +9,10 @@ interface Props {
 
 export function Footer({ side = 'hub', igHandle, igProfileUrl }: Props) {
   const year = new Date().getFullYear();
-
+  // On side pages, SiteNav already shows the brand. Repeating it in
+  // the footer is noise; the hub doesn't have a SiteNav, so the
+  // footer's brand is the only place it appears there.
+  const showBrand = side === 'hub';
   return (
     <footer
       className={styles.footer}
@@ -17,11 +20,12 @@ export function Footer({ side = 'hub', igHandle, igProfileUrl }: Props) {
     >
       <div className="container">
         <div className={styles.inner}>
-          <div className={styles.brand}>
-            <span className={styles.mark} aria-hidden="true">◆</span>
-            <span className={styles.name}>TingLingDing Photography</span>
-          </div>
-
+          {showBrand ? (
+            <div className={styles.brand}>
+              <span className={styles.mark} aria-hidden="true">◆</span>
+              <span className={styles.name}>TingLingDing Photography</span>
+            </div>
+          ) : null}
           {igHandle && igProfileUrl && (
             <a
               className={styles.ig}
