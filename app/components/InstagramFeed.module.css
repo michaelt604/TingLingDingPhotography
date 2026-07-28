@@ -112,6 +112,28 @@
    * runs on the GPU without triggering layout on the parent tile. */
   will-change: transform;
 }
+/* Cross-fade under-layer for grid tile carousel swaps. Mounted only
+ * during the brief window between user nav and the new top <Image>
+ * painting. Sibling of .tileImageButton inside .tile — the button
+ * (z-index 1) sits on top of this layer (z-index 0) so the hit area,
+ * focus order, and click handling stay untouched. Same absolute
+ * positioning and object-fit as .tileImage so the prior photo
+ * visually matches the new one while it fades out. The keyframes
+ * fade 1 -> 0 over 220ms; onAnimationEnd unmounts the element. */
+.tileUnder {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  pointer-events: none;
+  animation: tileUnderFade 220ms ease forwards;
+}
+@keyframes tileUnderFade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
 
 /*
  * The image is a full-tile button so opening the viewer is explicit. Keep
@@ -308,12 +330,20 @@
    * owns the animation start (`from { opacity: 1 }`) and end. */
   animation: lightboxUnderFade 220ms ease forwards;
 }
-/* Always-on keyframes. The animation name is matched in JS
- * (onAnimationEnd filters by it) so a hover transform/animation
- * on the same node can't trip the cleanup prematurely. */
 @keyframes lightboxUnderFade {
   from { opacity: 1; }
   to { opacity: 0; }
+}
+/* Symmetric cross-fade for the top image. Mounted only while the
+ * under-layer is fading out (i.e. when `underSrc` is set), so each
+ * fresh mount plays the keyframes from frame 0 — new image enters
+ * 0 -> 1 over the same 220ms the prior image exits 1 -> 0. */
+.lightboxTopFade {
+  animation: lightboxTopFade 220ms ease forwards;
+}
+@keyframes lightboxTopFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 /*
  * Lightbox prev/next arrows. Rendered as siblings of <Image> inside
@@ -454,8 +484,14 @@
   .lightbox,
   .lightboxArrow,
   .lightboxInstagram,
-  .tileInstagramLink {
+  .tileInstagramLink,
+  /* Cross-fade layers: kill both `transition` and `animation` so the
+   * grid + lightbox swaps become instant for users who opted out. */
+  .tileUnder,
+  .lightboxUnder,
+  .lightboxTopFade {
     transition: none;
+    animation: none;
   }
 }
 
