@@ -395,32 +395,8 @@ function PostTile({ post, handle }: PostTileProps) {
   const safeIndex = totalSlides === 0 ? 0 : Math.min(slideIndex, totalSlides - 1);
   const currentChild = slides ? slides[safeIndex] : undefined;
   const currentSrc = currentChild === undefined ? fallbackSrc : currentChild.media_type === 'VIDEO' && currentChild.thumbnail_url ? currentChild.thumbnail_url : currentChild.media_url;
-  // ---- Cross-fade on grid carousel swap ---------------------------
-  // `prevSrcRef` snapshots the live src synchronously on user nav
-  // (tile-arrow click / swipe) so the under-layer mounts with the
-  // prior src already in place — same shape as the lightbox's
-  // content-stack. A ref (not state) so the snapshot lands before
-  // React flushes the slide-index update; with state the new src
-  // would already be in `currentSrc` by render time and there'd
-  // be nothing to fade from.
-  const prevSrcRef = useRef<string | null>(null);
-  const [underSrc, setUnderSrc] = useState<string | null>(null);
-  const goPrev = useCallback(() => {
-    prevSrcRef.current = currentSrc;
-    setUnderSrc(currentSrc);
-    setSlideIndex((current) => Math.max(0, current - 1));
-  }, [currentSrc]);
-  const goNext = useCallback(() => {
-    prevSrcRef.current = currentSrc;
-    setUnderSrc(currentSrc);
-    setSlideIndex((current) => Math.min(totalSlides - 1, current + 1));
-  }, [currentSrc, totalSlides]);
-  // animationend fires once the .tileUnder fade completes. The
-  // under-layer only carries one animation, so no name filter needed.
-  const onTileUnderAnimationEnd = useCallback(() => {
-    setUnderSrc(null);
-    prevSrcRef.current = null;
-  }, []);
+  const goPrev = useCallback(() => setSlideIndex((current) => Math.max(0, current - 1)), []);
+  const goNext = useCallback(() => setSlideIndex((current) => Math.min(totalSlides - 1, current + 1)), [totalSlides]);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
@@ -452,13 +428,6 @@ function PostTile({ post, handle }: PostTileProps) {
   const canNext = slides !== null && slides.length > 1 && safeIndex < totalSlides - 1;
   return (
     <div className={styles.tile}>
-      {/* Cross-fade under-layer. Sibling of the trigger button (not a
-       * child of it) so the button's hit area, focus order, and click
-       * handling stay untouched. Positioned over the whole .tile via
-       * `.tileUnder`, behind the button via z-index; pointer-events
-       * none so taps pass through to the trigger. The live <Image>
-       * stays the only interior of the button. */}
-      {underSrc ? <img src={underSrc} alt="" decoding="async" aria-hidden="true" className={styles.tileUnder} onAnimationEnd={onTileUnderAnimationEnd} /> : null}
       <TileImageButton src={currentSrc} label={label} onOpen={openLightbox} triggerRef={triggerRef} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} />
       {caption ? <p className={styles.tileCaption} aria-hidden="true">{caption}</p> : null}
       {canPrev || canNext ? <CarouselControls canPrev={canPrev} canNext={canNext} safeIndex={safeIndex} totalSlides={totalSlides} onPrev={goPrev} onNext={goNext} /> : null}
@@ -631,7 +600,7 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
            * sizing so the wrap shrink-fits and arrows stay anchored. */}
           {underSrc ? <img ref={underRef} src={underSrc} alt={underAlt} decoding="async" aria-hidden="true" className={`${styles.lightboxImage} ${styles.lightboxUnder}`} onAnimationEnd={onUnderAnimationEnd} /> : null}
           {/* biome-ignore lint/performance/noImgElement: see above */}
-          <img src={src} alt={alt} decoding="async" className={`${styles.lightboxImage}${underSrc ? ` ${styles.lightboxTopFade}` : ''}`} />
+          <img src={src} alt={alt} decoding="async" className={styles.lightboxImage} />
           {canNext ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowNext}`} onClick={handleNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
         </div>
         <a href={permalink} target="_blank" rel="noopener noreferrer" className={styles.lightboxInstagram} aria-label={`Open this photo on Instagram in a new tab: ${alt}`}><span>View on Instagram</span></a>
