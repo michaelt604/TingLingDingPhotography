@@ -513,12 +513,6 @@ interface LightboxProps {
 }
 
 function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNext, onSwipePrev, onSwipeNext }: LightboxProps) {
-  // Tracks whether the current <img> has finished loading. Resets to
-  // false on every `src` change so the next image fades in cleanly
-  // (the previous image fades out via the same transition).
-  const [loaded, setLoaded] = useState(false);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: src IS the prop the effect should re-run on; biome warns because it sees a prop reference but doesn't track parent re-renders.
-  useEffect(() => { setLoaded(false); }, [src]);
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     const previousPaddingRight = document.body.style.paddingRight;
@@ -549,11 +543,9 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
           {/* Plain <img> on purpose: we need the natural aspect ratio so
            * .lightboxImageWrap shrink-wraps to the rendered photo and the
            * arrows anchor to the image, not the viewport. The IG CDN URL
-           * is already optimally sized, so <Image> would buy us nothing.
-           * The `loaded` state drives a CSS opacity transition so the
-           * image fades in once decoded (and on every carousel swap). */}
+           * is already optimally sized, so <Image> would buy us nothing. */}
           {/* biome-ignore lint/performance/noImgElement: see comment above */}
-          <img src={src} alt={alt} decoding="async" onLoad={() => setLoaded(true)} onError={() => setLoaded(true)} className={`${styles.lightboxImage} ${loaded ? styles.lightboxImageLoaded : ''}`} />
+          <img src={src} alt={alt} decoding="async" className={styles.lightboxImage} />
           {canNext ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowNext}`} onClick={onNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
         </div>
         <a href={permalink} target="_blank" rel="noopener noreferrer" className={styles.lightboxInstagram} aria-label={`Open this photo on Instagram in a new tab: ${alt}`}><span>View on Instagram</span></a>

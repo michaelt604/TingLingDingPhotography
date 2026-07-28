@@ -289,18 +289,7 @@
   width: auto;
   height: auto;
   max-width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
-  max-height: calc(100dvh - 120px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   object-fit: contain;
-  /* Fade in once the image has decoded (the <img> flips its class
-   * to .lightboxImageLoaded via onLoad). The 200ms transition is
-   * also reused for carousel swaps: src change resets `loaded` and
-   * the new image fades in, while the wrap keeps the arrows
-   * anchored to the same bounds. */
-  opacity: 0;
-  transition: opacity 200ms ease;
-}
-.lightboxImageLoaded {
-  opacity: 1;
 }
 /*
  * Lightbox prev/next arrows. Rendered as siblings of <Image> inside
