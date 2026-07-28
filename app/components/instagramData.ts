@@ -58,3 +58,21 @@ export function normalizeInstagramPosts(payload: unknown): IGPost[] {
     );
   });
 }
+
+export function mergeInstagramPosts<T extends IGPost>(
+  existing: readonly T[],
+  incoming: readonly T[],
+): T[] {
+  const uniquePosts = new Map<string, T>();
+  for (const post of [...existing, ...incoming]) {
+    if (!uniquePosts.has(post.id)) uniquePosts.set(post.id, post);
+  }
+
+  return [...uniquePosts.values()].sort((left, right) => {
+    const leftTime = Date.parse(left.timestamp);
+    const rightTime = Date.parse(right.timestamp);
+    const normalizedLeftTime = Number.isNaN(leftTime) ? Number.NEGATIVE_INFINITY : leftTime;
+    const normalizedRightTime = Number.isNaN(rightTime) ? Number.NEGATIVE_INFINITY : rightTime;
+    return normalizedRightTime - normalizedLeftTime || left.id.localeCompare(right.id);
+  });
+}

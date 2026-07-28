@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildCacheKey,
+  decodeCompositeCursor,
   DEFAULT_GRAPH_API_VERSION,
   errorResponse,
   resolveAllowlist,
@@ -144,50 +145,36 @@ const productionEnv: Env = {
   ALLOWED_ORIGIN: productionAllowlist,
 };
 
-test('opaque Instagram cursor round-trips through client, Worker, Graph, and cache key', async () => {
-  const cursor = 'QVFIUlN+L2FiY19kLWVmZw==';
-  const clientUrl = new URL('https://worker.test/underwater');
-  clientUrl.searchParams.set('cursor', cursor);
+interface CacheCapture {
+  matchedKeys: Request[];
+  puts: Array<{ key: Request; body: string }>;
+}
 
-  let upstreamUrl: URL | undefined;
-  let matchedCacheKey: Request | undefined;
+async function withWorkerMocks(
+  fetchImplementation: typeof fetch,
+  run: (capture: CacheCapture) => Promise<void>,
+): Promise<void> {
   const originalFetch = globalThis.fetch;
   const originalCaches = Reflect.get(globalThis, 'caches');
+  const capture: CacheCapture = { matchedKeys: [], puts: [] };
   Object.defineProperty(globalThis, 'caches', {
     configurable: true,
     value: {
       default: {
         match: async (key: Request) => {
-          matchedCacheKey = key;
+          capture.matchedKeys.push(key);
           return undefined;
         },
-        put: async () => undefined,
+        put: async (key: Request, response: Response) => {
+          capture.puts.push({ key, body: await response.text() });
+        },
       },
     },
   });
-  globalThis.fetch = async (input) => {
-    upstreamUrl = new URL(String(input));
-    return Response.json({
-      data: [],
-      paging: {
-        next: 'https://graph.instagram.com/next?access_token=must-not-leak',
-        cursors: { after: cursor },
-      },
-    });
-  };
+  globalThis.fetch = fetchImplementation;
 
   try {
-    const response = await worker.fetch(new Request(clientUrl), readyEnv);
-    assert.equal(response.status, 200);
-    assert.equal(clientUrl.searchParams.get('cursor'), cursor);
-    assert.equal(upstreamUrl?.searchParams.get('after'), cursor);
-    assert.ok(matchedCacheKey);
-    assert.equal(
-      decodeURIComponent(new URL(matchedCacheKey.url).pathname.split('/').at(-1) ?? ''),
-      cursor,
-    );
-    assert.deepEqual(await response.json(), { data: [], paging: { next: cursor } });
-    assert.equal(matchedCacheKey.url.includes('secret-1'), false);
+    await run(capture);
   } finally {
     globalThis.fetch = originalFetch;
     Object.defineProperty(globalThis, 'caches', {
@@ -195,26 +182,438 @@ test('opaque Instagram cursor round-trips through client, Worker, Graph, and cac
       value: originalCaches,
     });
   }
+}
+
+function upstreamPage(
+  data: Record<string, unknown>[],
+  after?: string,
+  token = 'must-not-leak',
+): Response {
+  return Response.json({
+    data,
+    ...(after
+      ? {
+          paging: {
+            next: `https://graph.instagram.com/next?access_token=${token}`,
+            cursors: { after },
+          },
+        }
+      : {}),
+  });
+}
+
+function requestPath(input: string | URL | Request): URL {
+  return new URL(input instanceof Request ? input.url : String(input));
+}
+
+test('merges owned and collaborative posts by descending timestamp, dedupes ids, and expands carousels', async () => {
+  const calls: URL[] = [];
+  await withWorkerMocks(
+    async (input, init) => {
+      const url = requestPath(input);
+      calls.push(url);
+      assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer secret-1');
+      if (url.pathname.endsWith('/media')) {
+        return upstreamPage([
+          {
+            id: 'duplicate',
+            media_type: 'IMAGE',
+            timestamp: '2026-01-02T00:00:00Z',
+          },
+          {
+            id: 'carousel',
+            media_type: 'CAROUSEL_ALBUM',
+            timestamp: '2026-01-01T00:00:00Z',
+          },
+        ]);
+      }
+      if (url.pathname.endsWith('/collaborative_media')) {
+        return upstreamPage([
+          {
+            id: 'newest',
+            media_type: 'IMAGE',
+            timestamp: '2026-01-03T00:00:00Z',
+          },
+          {
+            id: 'duplicate',
+            media_type: 'IMAGE',
+            timestamp: '2026-01-02T00:00:00Z',
+          },
+        ]);
+      }
+      if (url.pathname.endsWith('/carousel/children')) {
+        return Response.json({
+          data: [
+            {
+              id: 'child',
+              media_type: 'IMAGE',
+              media_url: 'https://cdninstagram.com/child.jpg',
+            },
+          ],
+        });
+      }
+      return new Response(null, { status: 404 });
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request('https://worker.test/underwater'),
+        readyEnv,
+      );
+      assert.equal(response.status, 200);
+      const body = (await response.json()) as {
+        data: Array<Record<string, unknown>>;
+      };
+      assert.deepEqual(body.data.map((post) => post.id), ['newest', 'duplicate', 'carousel']);
+      assert.deepEqual(body.data[2].children, [
+        {
+          id: 'child',
+          media_type: 'IMAGE',
+          media_url: 'https://cdninstagram.com/child.jpg',
+        },
+      ]);
+      const listCalls = calls.filter((url) => !url.pathname.endsWith('/children'));
+      assert.deepEqual(
+        listCalls.map((url) => url.pathname).sort(),
+        ['/v23.0/1/collaborative_media', '/v23.0/1/media'],
+      );
+      for (const url of listCalls) {
+        assert.equal(url.hostname, 'graph.instagram.com');
+        assert.equal(url.searchParams.get('limit'), '9');
+        assert.equal(
+          url.searchParams.get('fields'),
+          'id,media_type,media_url,permalink,thumbnail_url,caption,timestamp',
+        );
+      }
+    },
+  );
 });
 
-test('cursor validation rejects URL-shaped, control, malformed, and oversized values', async () => {
-  assert.equal(validateCursor('abc+def/ghi=='), 'abc+def/ghi==');
+test('keeps tokens and upstream next URLs out of responses and cache keys', async () => {
+  const requestUrls: string[] = [];
+  await withWorkerMocks(
+    async (input, init) => {
+      const url = requestPath(input);
+      requestUrls.push(url.href);
+      assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer secret-1');
+      return upstreamPage([], url.pathname.endsWith('/collaborative_media') ? 'collab-after' : 'media-after');
+    },
+    async (capture) => {
+      const response = await worker.fetch(
+        new Request('https://worker.test/underwater'),
+        readyEnv,
+      );
+      const responseText = await response.text();
+      assert.equal(response.status, 200);
+      assert.equal(responseText.includes('secret-1'), false);
+      assert.equal(responseText.includes('must-not-leak'), false);
+      assert.equal(responseText.includes('graph.instagram.com/next'), false);
+      assert.equal(requestUrls.every((url) => !url.includes('secret-1')), true);
+      assert.equal(capture.matchedKeys.every((key) => !key.url.includes('secret-1')), true);
+      assert.equal(capture.puts.every(({ key, body }) => !`${key.url}${body}`.includes('secret-1')), true);
+      assert.equal(capture.puts.every(({ body }) => !body.includes('must-not-leak')), true);
+    },
+  );
+});
 
+test('composite pagination advances and exhausts each source independently', async () => {
+  const calls: Array<{ source: string; after: string | null }> = [];
+  await withWorkerMocks(
+    async (input) => {
+      const url = requestPath(input);
+      const collaborative = url.pathname.endsWith('/collaborative_media');
+      const source = collaborative ? 'collaborativeMedia' : 'media';
+      const after = url.searchParams.get('after');
+      calls.push({ source, after });
+
+      if (!collaborative && after === null) return upstreamPage([{ id: 'm1' }], 'media-1');
+      if (!collaborative && after === 'media-1') return upstreamPage([{ id: 'm2' }]);
+      if (collaborative && after === null) return upstreamPage([{ id: 'c1' }], 'collab-1');
+      if (collaborative && after === 'collab-1') {
+        return upstreamPage([{ id: 'c2' }], 'collab-2');
+      }
+      if (collaborative && after === 'collab-2') return upstreamPage([{ id: 'c3' }]);
+      return new Response(null, { status: 500 });
+    },
+    async () => {
+      const first = await worker.fetch(new Request('https://worker.test/underwater'), readyEnv);
+      const firstBody = (await first.json()) as { paging: { next: string } };
+      const firstCursor = decodeCompositeCursor(firstBody.paging.next);
+      assert.ok(firstCursor);
+      assert.deepEqual(firstCursor.media, {
+        after: 'media-1',
+        exhausted: false,
+        failures: 0,
+      });
+      assert.deepEqual(firstCursor.collaborativeMedia, {
+        after: 'collab-1',
+        exhausted: false,
+        failures: 0,
+      });
+
+      const secondUrl = new URL('https://worker.test/underwater');
+      secondUrl.searchParams.set('cursor', firstBody.paging.next);
+      const second = await worker.fetch(new Request(secondUrl), readyEnv);
+      const secondBody = (await second.json()) as { paging: { next: string } };
+      const secondCursor = decodeCompositeCursor(secondBody.paging.next);
+      assert.ok(secondCursor);
+      assert.deepEqual(secondCursor.media, {
+        after: null,
+        exhausted: true,
+        failures: 0,
+      });
+      assert.deepEqual(secondCursor.collaborativeMedia, {
+        after: 'collab-2',
+        exhausted: false,
+        failures: 0,
+      });
+
+      const thirdUrl = new URL('https://worker.test/underwater');
+      thirdUrl.searchParams.set('cursor', secondBody.paging.next);
+      const third = await worker.fetch(new Request(thirdUrl), readyEnv);
+      assert.deepEqual(await third.json(), { data: [{ id: 'c3' }] });
+      assert.deepEqual(calls, [
+        { source: 'media', after: null },
+        { source: 'collaborativeMedia', after: null },
+        { source: 'media', after: 'media-1' },
+        { source: 'collaborativeMedia', after: 'collab-1' },
+        { source: 'collaborativeMedia', after: 'collab-2' },
+      ]);
+    },
+  );
+});
+
+test('returns owned posts when collaborative media fails', async () => {
+  await withWorkerMocks(
+    async (input) => {
+      const url = requestPath(input);
+      if (url.pathname.endsWith('/collaborative_media')) {
+        return new Response(null, { status: 503 });
+      }
+      return upstreamPage([
+        { id: 'owned', media_type: 'IMAGE', timestamp: '2026-01-01T00:00:00Z' },
+      ]);
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request('https://worker.test/underwater'),
+        readyEnv,
+      );
+      assert.equal(response.status, 200);
+      const body = (await response.json()) as {
+        data: Array<Record<string, unknown>>;
+        paging: { next: string };
+      };
+      assert.deepEqual(body.data, [
+        { id: 'owned', media_type: 'IMAGE', timestamp: '2026-01-01T00:00:00Z' },
+      ]);
+      assert.deepEqual(decodeCompositeCursor(body.paging.next)?.collaborativeMedia, {
+        after: null,
+        exhausted: false,
+        failures: 1,
+      });
+    },
+  );
+});
+
+test('preserves the 502 response when owned media fails', async () => {
+  await withWorkerMocks(
+    async (input) => {
+      const url = requestPath(input);
+      return url.pathname.endsWith('/media')
+        ? new Response(null, { status: 503 })
+        : upstreamPage([{ id: 'collaborative' }]);
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request('https://worker.test/underwater'),
+        readyEnv,
+      );
+      assert.equal(response.status, 502);
+      assert.deepEqual(await response.json(), {
+        error: 'Instagram feed is temporarily unavailable.',
+      });
+      assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    },
+  );
+});
+
+test('collaborative failures retry once, recover, and then stop after two consecutive failures', async () => {
+  let collaborativeAttempts = 0;
+  await withWorkerMocks(
+    async (input) => {
+      const url = requestPath(input);
+      if (url.pathname.endsWith('/media')) {
+        return upstreamPage([{ id: 'owned' }]);
+      }
+
+      collaborativeAttempts += 1;
+      if (collaborativeAttempts === 2) {
+        return upstreamPage([{ id: 'collaborative-recovered' }], 'collab-next');
+      }
+      return new Response(null, { status: 503 });
+    },
+    async () => {
+      const first = await worker.fetch(new Request('https://worker.test/underwater'), readyEnv);
+      const firstBody = (await first.json()) as {
+        data: Array<{ id: string }>;
+        paging: { next: string };
+      };
+      assert.deepEqual(firstBody.data, [{ id: 'owned' }]);
+      assert.deepEqual(decodeCompositeCursor(firstBody.paging.next)?.collaborativeMedia, {
+        after: null,
+        exhausted: false,
+        failures: 1,
+      });
+
+      const secondUrl = new URL('https://worker.test/underwater');
+      secondUrl.searchParams.set('cursor', firstBody.paging.next);
+      const second = await worker.fetch(new Request(secondUrl), readyEnv);
+      const secondBody = (await second.json()) as {
+        data: Array<{ id: string }>;
+        paging: { next: string };
+      };
+      assert.deepEqual(secondBody.data, [{ id: 'collaborative-recovered' }]);
+      assert.deepEqual(decodeCompositeCursor(secondBody.paging.next)?.collaborativeMedia, {
+        after: 'collab-next',
+        exhausted: false,
+        failures: 0,
+      });
+
+      const thirdUrl = new URL('https://worker.test/underwater');
+      thirdUrl.searchParams.set('cursor', secondBody.paging.next);
+      const third = await worker.fetch(new Request(thirdUrl), readyEnv);
+      const thirdBody = (await third.json()) as {
+        data: unknown[];
+        paging: { next: string };
+      };
+      assert.deepEqual(thirdBody.data, []);
+      assert.deepEqual(decodeCompositeCursor(thirdBody.paging.next)?.collaborativeMedia, {
+        after: 'collab-next',
+        exhausted: false,
+        failures: 1,
+      });
+
+      const fourthUrl = new URL('https://worker.test/underwater');
+      fourthUrl.searchParams.set('cursor', thirdBody.paging.next);
+      const fourth = await worker.fetch(new Request(fourthUrl), readyEnv);
+      assert.deepEqual(await fourth.json(), { data: [] });
+      assert.equal(collaborativeAttempts, 4);
+    },
+  );
+});
+
+test('malformed upstream data falls back for collaborative media and fails owned media', async () => {
+  await withWorkerMocks(
+    async (input) => {
+      const url = requestPath(input);
+      return url.pathname.endsWith('/media')
+        ? upstreamPage([{ id: 'owned' }])
+        : Response.json({ paging: {} });
+    },
+    async () => {
+      const response = await worker.fetch(new Request('https://worker.test/underwater'), readyEnv);
+      const body = (await response.json()) as {
+        data: Array<{ id: string }>;
+        paging: { next: string };
+      };
+      assert.equal(response.status, 200);
+      assert.deepEqual(body.data, [{ id: 'owned' }]);
+      assert.equal(
+        decodeCompositeCursor(body.paging.next)?.collaborativeMedia.failures,
+        1,
+      );
+    },
+  );
+
+  await withWorkerMocks(
+    async (input) =>
+      requestPath(input).pathname.endsWith('/media')
+        ? Response.json({ paging: {} })
+        : upstreamPage([]),
+    async () => {
+      const response = await worker.fetch(new Request('https://worker.test/underwater'), readyEnv);
+      assert.equal(response.status, 502);
+    },
+  );
+});
+
+test('equal and invalid timestamps sort deterministically by id', async () => {
+  await withWorkerMocks(
+    async (input) =>
+      requestPath(input).pathname.endsWith('/media')
+        ? upstreamPage([
+            { id: 'z', timestamp: 'invalid' },
+            { id: 'a', timestamp: 'invalid' },
+          ])
+        : upstreamPage([
+            { id: 'm', timestamp: '2026-01-01T00:00:00Z' },
+            { id: 'b', timestamp: '2026-01-01T00:00:00Z' },
+          ]),
+    async () => {
+      const response = await worker.fetch(new Request('https://worker.test/underwater'), readyEnv);
+      const body = (await response.json()) as { data: Array<{ id: string }> };
+      assert.deepEqual(body.data.map((post) => post.id), ['b', 'm', 'a', 'z']);
+    },
+  );
+});
+
+test('filters malformed array entries from successful upstream pages', async () => {
+  await withWorkerMocks(
+    async (input) =>
+      requestPath(input).pathname.endsWith('/media')
+        ? Response.json({
+            data: [[], { id: 'owned', timestamp: '2026-01-01T00:00:00Z' }],
+            paging: {},
+          })
+        : upstreamPage([]),
+    async () => {
+      const response = await worker.fetch(new Request('https://worker.test/underwater'), readyEnv);
+      const body = (await response.json()) as { data: Array<{ id: string }> };
+      assert.deepEqual(body.data, [{ id: 'owned', timestamp: '2026-01-01T00:00:00Z' }]);
+    },
+  );
+});
+
+test('malformed composite cursors are rejected before cache lookup or fetch', async () => {
+  assert.equal(validateCursor('abc+def/ghi=='), 'abc+def/ghi==');
+  const invalidState = btoa(
+    JSON.stringify({
+      version: 1,
+      media: { after: null, exhausted: false, failures: 0 },
+      collaborativeMedia: { after: null, exhausted: true, failures: 2 },
+    }),
+  )
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/u, '');
   const rejected = [
     'https://graph.instagram.com/page?after=abc',
     '//graph.instagram.com/page',
     'abc\nxyz',
     'abc%xyz',
-    'a'.repeat(257),
+    'a'.repeat(1025),
     '',
+    invalidState,
   ];
-  for (const cursor of rejected) {
-    const url = new URL('https://worker.test/underwater');
-    url.searchParams.set('cursor', cursor);
-    const response = await worker.fetch(new Request(url), readyEnv);
-    assert.equal(response.status, 400, `expected cursor to be rejected: ${JSON.stringify(cursor)}`);
-    assert.equal(response.headers.get('Cache-Control'), 'no-store');
-  }
+  let fetchCount = 0;
+
+  await withWorkerMocks(
+    async () => {
+      fetchCount += 1;
+      return upstreamPage([]);
+    },
+    async (capture) => {
+      for (const cursor of rejected) {
+        const url = new URL('https://worker.test/underwater');
+        url.searchParams.set('cursor', cursor);
+        const response = await worker.fetch(new Request(url), readyEnv);
+        assert.equal(response.status, 400, `expected cursor to be rejected: ${JSON.stringify(cursor)}`);
+        assert.equal(response.headers.get('Cache-Control'), 'no-store');
+      }
+      assert.equal(fetchCount, 0);
+      assert.equal(capture.matchedKeys.length, 0);
+    },
+  );
 });
 
 test('handler fails closed when origin configuration is missing', async () => {

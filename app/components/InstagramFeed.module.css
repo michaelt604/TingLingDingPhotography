@@ -110,7 +110,61 @@
   object-fit: cover;
   /* Lift onto its own compositor layer so any future animation here
    * runs on the GPU without triggering layout on the parent tile. */
-  will-change: transform;
+  will-change: transform, opacity;
+}
+
+/*
+ * Outgoing carousel image. It sits above the live image button (z-index 1)
+ * while sliding away, revealing the newly selected image beneath it. The
+ * caption and carousel controls use z-index 3, so they continue to paint
+ * above this non-interactive layer.
+ */
+.tileOutgoing {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  opacity: 1;
+  will-change: transform, opacity;
+}
+
+.tileOutgoingNext {
+  animation: tileOutgoingNext 280ms cubic-bezier(0.22, 0.7, 0.2, 1) forwards;
+}
+
+.tileOutgoingPrev {
+  animation: tileOutgoingPrev 280ms cubic-bezier(0.22, 0.7, 0.2, 1) forwards;
+}
+
+.tileImageEnterNext {
+  animation: tileImageEnterNext 280ms cubic-bezier(0.22, 0.7, 0.2, 1) both;
+}
+
+.tileImageEnterPrev {
+  animation: tileImageEnterPrev 280ms cubic-bezier(0.22, 0.7, 0.2, 1) both;
+}
+
+@keyframes tileOutgoingNext {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(-4%) scale(0.985); }
+}
+
+@keyframes tileOutgoingPrev {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(4%) scale(0.985); }
+}
+
+@keyframes tileImageEnterNext {
+  from { opacity: 0.55; transform: translateX(4%) scale(1.015); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes tileImageEnterPrev {
+  from { opacity: 0.55; transform: translateX(-4%) scale(1.015); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
 }
 
 /*
@@ -154,7 +208,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 2;
+  z-index: 3;
   margin: 0;
   padding: 24px 14px 14px;
   font-family: var(--ff-mono);
@@ -184,7 +238,7 @@
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  z-index: 2;
+  z-index: 3;
   width: 32px;
   height: 32px;
   display: inline-flex;
@@ -291,29 +345,45 @@
   max-height: calc(100dvh - 120px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   object-fit: contain;
 }
-/* Cross-fade under-layer. Mounted only during the brief window
- * between when the user navigates the carousel and when the new
- * top image has fully painted. Absolutely positioned over the
- * top .lightboxImage so the same wrap bounds both. Opacity 1
- * initially, fading to 0 via the inline style which React resets
- * to 0 once `underSrc` becomes null. */
+/* Full-screen outgoing layer. It remains opaque while the destination
+ * loads, then slides above the entering live image. */
 .lightboxUnder {
   position: absolute;
   inset: 0;
   margin: auto;
   pointer-events: none;
-  /* Mount-driven fade: the under-layer unmounts and re-mounts
-   * fresh on every carousel swap, so the keyframes always plays
-   * from frame 0. No `opacity` baseline needed - the keyframes
-   * owns the animation start (`from { opacity: 1 }`) and end. */
-  animation: lightboxUnderFade 220ms ease forwards;
+  opacity: 1;
+  will-change: transform, opacity;
 }
-/* Always-on keyframes. The animation name is matched in JS
- * (onAnimationEnd filters by it) so a hover transform/animation
- * on the same node can't trip the cleanup prematurely. */
-@keyframes lightboxUnderFade {
-  from { opacity: 1; }
-  to { opacity: 0; }
+
+.lightboxOutgoingNext {
+  animation: lightboxOutgoingNext 320ms cubic-bezier(0.22, 0.7, 0.2, 1) forwards;
+}
+.lightboxOutgoingPrev {
+  animation: lightboxOutgoingPrev 320ms cubic-bezier(0.22, 0.7, 0.2, 1) forwards;
+}
+.lightboxImageEnterNext {
+  animation: lightboxImageEnterNext 320ms cubic-bezier(0.22, 0.7, 0.2, 1) both;
+}
+.lightboxImageEnterPrev {
+  animation: lightboxImageEnterPrev 320ms cubic-bezier(0.22, 0.7, 0.2, 1) both;
+}
+
+@keyframes lightboxOutgoingNext {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(-3%) scale(0.985); }
+}
+@keyframes lightboxOutgoingPrev {
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(3%) scale(0.985); }
+}
+@keyframes lightboxImageEnterNext {
+  from { opacity: 0.5; transform: translateX(3%) scale(1.015); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes lightboxImageEnterPrev {
+  from { opacity: 0.5; transform: translateX(-3%) scale(1.015); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
 }
 /*
  * Lightbox prev/next arrows. Rendered as siblings of <Image> inside
@@ -457,13 +527,43 @@
   .tileInstagramLink {
     transition: none;
   }
+  /*
+   * Avoid lateral motion while still giving carousel swaps visible
+   * continuity. The higher-specificity, important duration overrides
+   * the global 0.001ms motion reset only for this brief dissolve.
+   */
+  .tileOutgoingNext,
+  .tileOutgoingPrev {
+    animation-name: tileReducedMotionDissolve !important;
+    animation-duration: 180ms !important;
+    animation-timing-function: ease-out !important;
+  }
+  .tileImageEnterNext,
+  .tileImageEnterPrev {
+    animation: none !important;
+  }
+  .lightboxOutgoingNext,
+  .lightboxOutgoingPrev {
+    animation-name: tileReducedMotionDissolve !important;
+    animation-duration: 180ms !important;
+    animation-timing-function: ease-out !important;
+  }
+  .lightboxImageEnterNext,
+  .lightboxImageEnterPrev {
+    animation: none !important;
+  }
+}
+
+@keyframes tileReducedMotionDissolve {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 .carouselIndicator {
   position: absolute;
   right: 8px;
   bottom: 8px;
-  z-index: 2;
+  z-index: 3;
   padding: 4px 8px;
   border-radius: 999px;
   background: rgba(15, 15, 18, 0.72);

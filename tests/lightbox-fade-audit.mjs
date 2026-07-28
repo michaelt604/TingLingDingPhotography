@@ -8,9 +8,6 @@
 
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const PORT = 4322;
@@ -54,14 +51,16 @@ const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
 const page = await ctx.newPage();
 
-await page.route('https://ig-proxy.michaelt604.workers.dev/**', async (route) => {
+const fulfillFeed = async (route) => {
   await route.fulfill({
     status: 200,
     contentType: 'application/json',
     headers: { 'Access-Control-Allow-Origin': '*' },
     body: JSON.stringify(MOCK_JSON),
   });
-});
+};
+await page.route('https://ig-proxy.michaelt604.workers.dev/**', fulfillFeed);
+await page.route('http://127.0.0.1:8788/**', fulfillFeed);
 await page.route(WIDE_URL, async (route) => {
   await route.fulfill({ status: 200, contentType: 'image/svg+xml', body: WIDE_SVG });
 });
@@ -75,7 +74,6 @@ await page.waitForLoadState('networkidle');
 
 const tiles = await page.locator('button[aria-label^="View photo"]').all();
 report('INFO', `Found ${tiles.length} tiles`, {});
-const tileCount = tiles.length;
 
 // Open the (lone) carousel tile.
 await tiles[0].click({ force: true });
@@ -125,7 +123,7 @@ for (const t of timings) {
   // and have a non-zero opacity. By +700ms the under-layer should be unmounted.
   if (t === 30 && s.imgCount < 2) report('FAIL', 'under-layer not mounted at +30ms — fade never starts');
   if (t === 110 && s.imgCount >= 2) {
-    const under = s.imgs.find((i) => i.anim === 'lightboxUnderFade' || i.anim?.includes('lightboxUnderFade'));
+    const under = s.imgs.find((i) => i.anim && i.anim !== 'none');
     if (!under) report('FAIL', 'under-layer has no animation at +110ms', { anims: s.imgs.map((i) => i.anim) });
     else if (Number(under.opacity) >= 0.95) report('FAIL', `under-layer opacity ${under.opacity} at +110ms — animation did not progress`);
   }

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent, type RefObject } from 'react';
 import Image from 'next/image';
-import { normalizeInstagramPosts, type IGPost } from './instagramData';
+import { mergeInstagramPosts, normalizeInstagramPosts, type IGPost } from './instagramData';
+import { getInstagramFeedDisplayState } from './instagramFeedState';
 import styles from './InstagramFeed.module.css';
 
 interface Props {
@@ -146,9 +147,12 @@ export function InstagramFeed({
       .then((data: FeedResponse) => {
         if (cancelled || lifecycleTokenRef.current !== token) return;
         const validPosts = normalizeInstagramPosts(data) as FeedPost[];
-        setPosts(validPosts);
-        setNextCursor(normalizeCursor(getPagingNext(data)));
-        if (validPosts.length === 0) setError('No valid posts were returned.');
+        const initialCursor = normalizeCursor(getPagingNext(data));
+        setPosts(mergeInstagramPosts([], validPosts));
+        setNextCursor(initialCursor);
+        if (validPosts.length === 0 && initialCursor === null) {
+          setError('No valid posts were returned.');
+        }
       })
       .catch((e) => {
         if (!cancelled && lifecycleTokenRef.current === token) setError(String(e?.message || e));
@@ -222,11 +226,7 @@ export function InstagramFeed({
       // would otherwise leak posts into the next lifecycle.
       if (lifecycleTokenRef.current !== token) return;
       const incoming = normalizeInstagramPosts(data) as FeedPost[];
-      setPosts((existing) => {
-        const seen = new Set(existing.map((post) => post.id));
-        const additions = incoming.filter((post) => !seen.has(post.id));
-        return existing.concat(additions);
-      });
+      setPosts((existing) => mergeInstagramPosts(existing, incoming));
       setNextCursor(normalizeCursor(getPagingNext(data)));
     } catch (e) {
       // Skip error reporting for a stale lifecycle — surfacing it would
@@ -283,13 +283,18 @@ export function InstagramFeed({
     fetchNextPage(true);
   }, [fetchNextPage, isLoadingMore]);
 
-  const showRealPosts = Boolean(proxyUrl) && posts.length > 0;
+  const { showRealPosts, showPlaceholder, showPagination } =
+    getInstagramFeedDisplayState({
+      hasProxy: Boolean(proxyUrl),
+      postCount: posts.length,
+      nextCursor,
+      hasInitialLoaded,
+    });
   // Show the placeholder when we know there's nothing to render — i.e.
   // either the first fetch has completed and returned nothing, or the
   // proxy URL isn't configured at all. While the very first fetch is
   // still in flight we render neither, so we don't flash the
   // placeholder just before the grid pops in.
-  const showPlaceholder = !showRealPosts && (!proxyUrl || hasInitialLoaded);
   return (
     <section className={styles.feed} id="instagram" aria-label={`Latest posts from @${handle}`}>
       <div className="container">
@@ -358,6 +363,31 @@ export function InstagramFeed({
             </a>
           </div>
         ) : null}
+        {!showRealPosts && showPagination ? (
+          <div className={styles.sentinelRow}>
+            <div ref={sentinelRef} className={styles.sentinel} aria-hidden="true" />
+            {loadMoreError ? (
+              <div className={styles.retryBlock}>
+                <p className={styles.retryError} role="alert">
+                  Couldn&apos;t load collaborator posts. {loadMoreError}
+                </p>
+                <button
+                  type="button"
+                  className={styles.retryButton}
+                  onClick={handleRetry}
+                  disabled={isLoadingMore}
+                  aria-busy={isLoadingMore}
+                >
+                  {isLoadingMore ? 'Retrying…' : 'Retry'}
+                </button>
+              </div>
+            ) : (
+              <p className={styles.statusLoading} role="status" aria-live="polite">
+                {isLoadingMore ? 'Loading collaborator posts…' : 'Checking collaborator posts…'}
+              </p>
+            )}
+          </div>
+        ) : null}
       </div>
     </section>
   );
@@ -393,10 +423,42 @@ function PostTile({ post, handle }: PostTileProps) {
   const [slideIndex, setSlideIndex] = useState(0);
   const totalSlides = slides?.length ?? 0;
   const safeIndex = totalSlides === 0 ? 0 : Math.min(slideIndex, totalSlides - 1);
-  const currentChild = slides ? slides[safeIndex] : undefined;
-  const currentSrc = currentChild === undefined ? fallbackSrc : currentChild.media_type === 'VIDEO' && currentChild.thumbnail_url ? currentChild.thumbnail_url : currentChild.media_url;
-  const goPrev = useCallback(() => setSlideIndex((current) => Math.max(0, current - 1)), []);
-  const goNext = useCallback(() => setSlideIndex((current) => Math.min(totalSlides - 1, current + 1)), [totalSlides]);
+  const slideSrcAt = useCallback((index: number) => {
+    const child = slides?.[index];
+    return child === undefined ? fallbackSrc : child.media_type === 'VIDEO' && child.thumbnail_url ? child.thumbnail_url : child.media_url;
+  }, [fallbackSrc, slides]);
+  const currentSrc = slideSrcAt(safeIndex);
+  const [transition, setTransition] = useState<{ src: string; targetSrc: string; sequence: number; fading: boolean; direction: -1 | 1 } | null>(null);
+  const beginTransition = useCallback((targetSrc: string, direction: -1 | 1) => {
+    setTransition((active) => ({
+      // Before the pending image loads, preserve the frame that is
+      // actually still visible. Once a fade is running, currentSrc is
+      // loaded and is safe to become the next outgoing frame.
+      src: active && !active.fading ? active.src : currentSrc,
+      targetSrc,
+      sequence: (active?.sequence ?? 0) + 1,
+      fading: false,
+      direction,
+    }));
+  }, [currentSrc]);
+  const goPrev = useCallback(() => {
+    if (safeIndex <= 0) return;
+    const nextIndex = safeIndex - 1;
+    beginTransition(slideSrcAt(nextIndex), -1);
+    setSlideIndex(nextIndex);
+  }, [beginTransition, safeIndex, slideSrcAt]);
+  const goNext = useCallback(() => {
+    if (safeIndex >= totalSlides - 1) return;
+    const nextIndex = safeIndex + 1;
+    beginTransition(slideSrcAt(nextIndex), 1);
+    setSlideIndex(nextIndex);
+  }, [beginTransition, safeIndex, slideSrcAt, totalSlides]);
+  const handleLiveImageLoad = useCallback((loadedSrc: string) => {
+    setTransition((active) => active?.targetSrc === loadedSrc ? { ...active, fading: true } : active);
+  }, []);
+  const handleOutgoingFadeEnd = useCallback(() => {
+    setTransition(null);
+  }, []);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
@@ -428,7 +490,31 @@ function PostTile({ post, handle }: PostTileProps) {
   const canNext = slides !== null && slides.length > 1 && safeIndex < totalSlides - 1;
   return (
     <div className={styles.tile}>
-      <TileImageButton src={currentSrc} label={label} onOpen={openLightbox} triggerRef={triggerRef} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} />
+      <TileImageButton
+        src={currentSrc}
+        label={label}
+        onOpen={openLightbox}
+        onImageLoad={handleLiveImageLoad}
+        transitionDirection={transition?.fading ? transition.direction : null}
+        triggerRef={triggerRef}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+      />
+      {transition ? (
+        // The outgoing image must paint above the live image button for
+        // the fade to be visible. Controls render later at the same
+        // stacking level, so they remain on top and interactive.
+        // biome-ignore lint/performance/noImgElement: a transient copy of the already-loaded carousel image
+        <img
+          key={transition.sequence}
+          src={transition.src}
+          alt=""
+          decoding="async"
+          aria-hidden="true"
+          className={`${styles.tileOutgoing}${transition.fading ? ` ${transition.direction === 1 ? styles.tileOutgoingNext : styles.tileOutgoingPrev}` : ''}`}
+          onAnimationEnd={handleOutgoingFadeEnd}
+        />
+      ) : null}
       {caption ? <p className={styles.tileCaption} aria-hidden="true">{caption}</p> : null}
       {canPrev || canNext ? <CarouselControls canPrev={canPrev} canNext={canNext} safeIndex={safeIndex} totalSlides={totalSlides} onPrev={goPrev} onNext={goNext} /> : null}
       {lightboxOpen ? <Lightbox src={currentSrc} alt={label} permalink={post.permalink} onClose={closeLightbox} canPrev={canPrev} canNext={canNext} onPrev={goPrev} onNext={goNext} onSwipePrev={goPrev} onSwipeNext={goNext} /> : null}
@@ -488,14 +574,24 @@ interface TileImageButtonProps {
   src: string;
   label: string;
   onOpen: () => void;
+  onImageLoad: (loadedSrc: string) => void;
+  transitionDirection: -1 | 1 | null;
   triggerRef: RefObject<HTMLButtonElement | null>;
   onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void;
   onPointerUp: (event: PointerEvent<HTMLButtonElement>) => void;
 }
-function TileImageButton({ src, label, onOpen, triggerRef, onPointerDown, onPointerUp }: TileImageButtonProps) {
+function TileImageButton({ src, label, onOpen, onImageLoad, transitionDirection, triggerRef, onPointerDown, onPointerUp }: TileImageButtonProps) {
   return (
     <button ref={triggerRef} type="button" className={styles.tileImageButton} onClick={onOpen} onPointerDown={onPointerDown} onPointerUp={onPointerUp} aria-label={`View photo: ${label}`}>
-      <Image src={src} alt="" fill sizes="(min-width: 1024px) 30vw, (min-width: 540px) 33vw, 50vw" unoptimized className={styles.tileImage} />
+      <Image
+        src={src}
+        alt=""
+        fill
+        sizes="(min-width: 1024px) 30vw, (min-width: 540px) 33vw, 50vw"
+        unoptimized
+        className={`${styles.tileImage}${transitionDirection ? ` ${transitionDirection === 1 ? styles.tileImageEnterNext : styles.tileImageEnterPrev}` : ''}`}
+        onLoad={() => onImageLoad(src)}
+      />
     </button>
   );
 }
@@ -513,41 +609,41 @@ interface LightboxProps {
 }
 
 function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNext, onSwipePrev, onSwipeNext }: LightboxProps) {
-  // ---- Cross-fade on carousel swap --------------------------------
-  // `prevSrcRef` snapshots the live src synchronously on user nav
-  // (arrow click / swipe / keyboard ArrowLeft/Right). A ref - not
-  // state - so the snapshot is in place before React flushes the
-  // parent's state update; without this, the new src would already
-  // be in `src` by the time the effect runs and there'd be nothing
-  // to cross-fade from.
-  const prevSrcRef = useRef<string | null>(null);
-  const prevAltRef = useRef('');
-  const underRef = useRef<HTMLImageElement | null>(null);
-  const [underSrc, setUnderSrc] = useState<string | null>(null);
-  const [underAlt, setUnderAlt] = useState('');
-  // The under-layer is removed via onAnimationEnd (filtered by
-  // animationName). No opacity state needed - the @keyframes
-  // fades 1 -> 0 over 220ms and React unmounts on animationend.
+  const [transition, setTransition] = useState<{
+    src: string;
+    alt: string;
+    sequence: number;
+    fading: boolean;
+    direction: -1 | 1;
+  } | null>(null);
+  const beginTransition = useCallback((direction: -1 | 1) => {
+    setTransition((active) => ({
+      // Preserve the frame that is still visible if the previous
+      // destination is pending; otherwise the loaded live frame can
+      // become the next outgoing layer.
+      src: active && !active.fading ? active.src : src,
+      alt: active && !active.fading ? active.alt : alt,
+      sequence: (active?.sequence ?? 0) + 1,
+      fading: false,
+      direction,
+    }));
+  }, [alt, src]);
   const handlePrev = useCallback(() => {
-    prevSrcRef.current = src; prevAltRef.current = alt;
-    setUnderSrc(src); setUnderAlt(alt);
+    beginTransition(-1);
     onPrev();
-  }, [src, alt, onPrev]);
+  }, [beginTransition, onPrev]);
   const handleNext = useCallback(() => {
-    prevSrcRef.current = src; prevAltRef.current = alt;
-    setUnderSrc(src); setUnderAlt(alt);
+    beginTransition(1);
     onNext();
-  }, [src, alt, onNext]);
+  }, [beginTransition, onNext]);
   const handleSwipePrev = useCallback(() => {
-    prevSrcRef.current = src; prevAltRef.current = alt;
-    setUnderSrc(src); setUnderAlt(alt);
+    beginTransition(-1);
     onSwipePrev();
-  }, [src, alt, onSwipePrev]);
+  }, [beginTransition, onSwipePrev]);
   const handleSwipeNext = useCallback(() => {
-    prevSrcRef.current = src; prevAltRef.current = alt;
-    setUnderSrc(src); setUnderAlt(alt);
+    beginTransition(1);
     onSwipeNext();
-  }, [src, alt, onSwipeNext]);
+  }, [beginTransition, onSwipeNext]);
   // Body-overflow lock while the lightbox is open (prevents the
   // underlying feed from scrolling under the modal).
   useEffect(() => {
@@ -579,13 +675,12 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
     if (Math.abs(dx) < 48 || Math.abs(dy) > Math.abs(dx)) return;
     if (dx < 0) handleSwipeNext(); else handleSwipePrev();
   };
-  // animationend fires once the @keyframes fade completes. The
-  // under-layer only has one animation attached, so we don't need
-  // to filter by animation name (and the CSS-module-scoped name
-  // isn't reliably exposed at runtime).
-  const onUnderAnimationEnd = useCallback(() => {
-    setUnderSrc(null); setUnderAlt('');
-    prevSrcRef.current = null; prevAltRef.current = '';
+  const handleLiveImageLoad = useCallback((loadedSrc: string) => {
+    if (loadedSrc !== src) return;
+    setTransition((active) => active ? { ...active, fading: true } : active);
+  }, [src]);
+  const onOutgoingAnimationEnd = useCallback(() => {
+    setTransition(null);
   }, []);
   return (
     <div className={`${styles.lightbox} ${styles.lightboxOpen}`} role="dialog" aria-modal="true" aria-label={`Photo viewer: ${alt}`} tabIndex={-1} onClick={handleBackdropClick} onKeyDown={handleBackdropKeyDown}>
@@ -593,14 +688,29 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
         <button type="button" className={styles.lightboxClose} onClick={onClose} aria-label="Close photo viewer"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12" /><path d="M18 6L6 18" /></svg></button>
         <div className={styles.lightboxImageWrap} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp}>
           {canPrev ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowPrev}`} onClick={handlePrev} aria-label="Previous photo"><span aria-hidden="true">‹</span></button> : null}
-          {/* Cross-fade stack. While `underSrc` is set, render an
-           * under-layer (mounted fresh each swap with the prior src)
-           * and let `.lightboxImage` fade its opacity 1 -> 0 via the
-           * the live src; opacity 1 throughout. Both use natural
-           * sizing so the wrap shrink-fits and arrows stay anchored. */}
-          {underSrc ? <img ref={underRef} src={underSrc} alt={underAlt} decoding="async" aria-hidden="true" className={`${styles.lightboxImage} ${styles.lightboxUnder}`} onAnimationEnd={onUnderAnimationEnd} /> : null}
+          {/* The prior full-screen image stays above the live image
+           * until the destination has loaded, then both layers run
+           * the direction-aware transition together. */}
+          {transition ? (
+            // biome-ignore lint/performance/noImgElement: transient copy of the already-loaded lightbox image
+            <img
+              key={transition.sequence}
+              src={transition.src}
+              alt={transition.alt}
+              decoding="async"
+              aria-hidden="true"
+              className={`${styles.lightboxImage} ${styles.lightboxUnder}${transition.fading ? ` ${transition.direction === 1 ? styles.lightboxOutgoingNext : styles.lightboxOutgoingPrev}` : ''}`}
+              onAnimationEnd={onOutgoingAnimationEnd}
+            />
+          ) : null}
           {/* biome-ignore lint/performance/noImgElement: see above */}
-          <img src={src} alt={alt} decoding="async" className={styles.lightboxImage} />
+          <img
+            src={src}
+            alt={alt}
+            decoding="async"
+            className={`${styles.lightboxImage}${transition?.fading ? ` ${transition.direction === 1 ? styles.lightboxImageEnterNext : styles.lightboxImageEnterPrev}` : ''}`}
+            onLoad={() => handleLiveImageLoad(src)}
+          />
           {canNext ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowNext}`} onClick={handleNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
         </div>
         <a href={permalink} target="_blank" rel="noopener noreferrer" className={styles.lightboxInstagram} aria-label={`Open this photo on Instagram in a new tab: ${alt}`}><span>View on Instagram</span></a>

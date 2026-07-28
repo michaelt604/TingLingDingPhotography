@@ -348,11 +348,84 @@ export function resolveGraphApiVersion(env: Env): string | null {
 // URL-shaped values, controls, and every character outside those alphabets.
 // Returns null when the value is empty, too long, or malformed.
 const MAX_CURSOR_LENGTH = 256;
+const MAX_CLIENT_CURSOR_LENGTH = 1024;
+const CACHE_SCHEMA_VERSION = 'collaborative-v1';
+
+interface SourceCursorState {
+  after: string | null;
+  exhausted: boolean;
+  failures: 0 | 1;
+}
+
+interface CompositeCursor {
+  version: 1;
+  media: SourceCursorState;
+  collaborativeMedia: SourceCursorState;
+}
+
 export function validateCursor(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   if (value.length === 0 || value.length > MAX_CURSOR_LENGTH) return null;
   if (value.startsWith('//') || !/^[A-Za-z0-9_+/=-]+$/.test(value)) return null;
   return value;
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+function parseSourceCursorState(value: unknown): SourceCursorState | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (!hasExactKeys(candidate, ['after', 'exhausted', 'failures'])) return null;
+  if (typeof candidate.exhausted !== 'boolean') return null;
+  if (candidate.failures !== 0 && candidate.failures !== 1) return null;
+  const after = candidate.after === null ? null : validateCursor(candidate.after);
+  if (candidate.after !== null && after === null) return null;
+  if (candidate.exhausted && after !== null) return null;
+  if (!candidate.exhausted && after === null && candidate.failures !== 1) return null;
+  return { after, exhausted: candidate.exhausted, failures: candidate.failures };
+}
+
+function encodeCompositeCursor(cursor: CompositeCursor): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(cursor));
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/u, '');
+}
+
+export function decodeCompositeCursor(value: unknown): CompositeCursor | null {
+  if (typeof value !== 'string') return null;
+  if (
+    value.length === 0 ||
+    value.length > MAX_CLIENT_CURSOR_LENGTH ||
+    value.length % 4 === 1 ||
+    !/^[A-Za-z0-9_-]+$/.test(value)
+  ) {
+    return null;
+  }
+
+  try {
+    const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const parsed = JSON.parse(
+      new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes),
+    ) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const candidate = parsed as Record<string, unknown>;
+    if (!hasExactKeys(candidate, ['version', 'media', 'collaborativeMedia'])) return null;
+    if (candidate.version !== 1) return null;
+    const media = parseSourceCursorState(candidate.media);
+    const collaborativeMedia = parseSourceCursorState(candidate.collaborativeMedia);
+    if (!media || !collaborativeMedia) return null;
+    const cursor: CompositeCursor = { version: 1, media, collaborativeMedia };
+    return encodeCompositeCursor(cursor) === value ? cursor : null;
+  } catch {
+    return null;
+  }
 }
 
 export function buildCacheKey(
@@ -365,7 +438,9 @@ export function buildCacheKey(
   // key is stable regardless of how the URL was constructed. Encode every
   // segment because valid opaque cursors may contain reserved URL characters.
   const cursorSegment = cursor ?? '_';
-  const path = [graphApiVersion, userId, side, cursorSegment].map(encodeURIComponent).join('/');
+  const path = [CACHE_SCHEMA_VERSION, graphApiVersion, userId, side, cursorSegment]
+    .map(encodeURIComponent)
+    .join('/');
   return new Request(`https://ig-cache.local/${path}`, { method: 'GET' });
 }
 
@@ -385,6 +460,104 @@ export function sanitizePaging(payload: unknown): { next?: string } | undefined 
   const cursor = validateCursor(after);
   if (!cursor) return undefined;
   return { next: cursor };
+}
+
+type MediaPageResult =
+  | { outcome: 'success'; payload: Record<string, unknown> }
+  | { outcome: 'failure'; status?: number }
+  | { outcome: 'skipped' };
+
+function buildMediaUrl(
+  graphApiVersion: string,
+  userId: string,
+  endpoint: 'media' | 'collaborative_media',
+  after: string | null,
+): URL {
+  const url = new URL(
+    `https://graph.instagram.com/${graphApiVersion}/${encodeURIComponent(userId)}/${endpoint}`,
+  );
+  url.search = new URLSearchParams({
+    fields: MEDIA_FIELDS,
+    limit: '9',
+    ...(after ? { after } : {}),
+  }).toString();
+  return url;
+}
+
+async function fetchMediaPage(url: URL, accessToken: string): Promise<MediaPageResult> {
+  try {
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${accessToken}` },
+    });
+    if (!response.ok) return { outcome: 'failure', status: response.status };
+    const payload = (await response.json()) as unknown;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return { outcome: 'failure' };
+    }
+    if (!Array.isArray((payload as Record<string, unknown>).data)) {
+      return { outcome: 'failure' };
+    }
+    return { outcome: 'success', payload: payload as Record<string, unknown> };
+  } catch {
+    return { outcome: 'failure' };
+  }
+}
+
+function postsFromResult(result: MediaPageResult): Record<string, unknown>[] {
+  if (result.outcome !== 'success' || !Array.isArray(result.payload.data)) return [];
+  return result.payload.data.filter(
+    (post): post is Record<string, unknown> =>
+      Boolean(post) && typeof post === 'object' && !Array.isArray(post),
+  );
+}
+
+function stateFromResult(
+  previous: SourceCursorState,
+  result: MediaPageResult,
+): SourceCursorState {
+  if (result.outcome === 'skipped') return previous;
+  if (result.outcome === 'failure') {
+    if (previous.failures === 0) return { ...previous, failures: 1 };
+    return { after: null, exhausted: true, failures: 1 };
+  }
+  const after = sanitizePaging(result.payload)?.next ?? null;
+  return after
+    ? { after, exhausted: false, failures: 0 }
+    : { after: null, exhausted: true, failures: 0 };
+}
+
+function mergeMediaPosts(
+  mediaPosts: Record<string, unknown>[],
+  collaborativePosts: Record<string, unknown>[],
+): Record<string, unknown>[] {
+  const seenIds = new Set<string>();
+  return [...mediaPosts, ...collaborativePosts]
+    .filter((post) => {
+      if (typeof post.id !== 'string') return true;
+      if (seenIds.has(post.id)) return false;
+      seenIds.add(post.id);
+      return true;
+    })
+    .sort((left, right) => {
+      const leftTimestamp = typeof left.timestamp === 'string' ? Date.parse(left.timestamp) : Number.NaN;
+      const rightTimestamp = typeof right.timestamp === 'string' ? Date.parse(right.timestamp) : Number.NaN;
+      const leftValue = Number.isNaN(leftTimestamp) ? Number.NEGATIVE_INFINITY : leftTimestamp;
+      const rightValue = Number.isNaN(rightTimestamp) ? Number.NEGATIVE_INFINITY : rightTimestamp;
+      if (rightValue !== leftValue) return rightValue - leftValue;
+      const leftId = typeof left.id === 'string' ? left.id : '';
+      const rightId = typeof right.id === 'string' ? right.id : '';
+      return leftId.localeCompare(rightId);
+    });
+}
+
+function responseBodyFromCache(payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return { data: [] };
+  const candidate = payload as Record<string, unknown>;
+  const data = Array.isArray(candidate.data) ? candidate.data : [];
+  const paging = candidate.paging;
+  if (!paging || typeof paging !== 'object' || Array.isArray(paging)) return { data };
+  const next = (paging as Record<string, unknown>).next;
+  return decodeCompositeCursor(next) ? { data, paging: { next } } : { data };
 }
 
 export default {
@@ -453,84 +626,88 @@ export default {
       return errorResponse('Service configuration is incomplete.', effectiveOrigin, 503);
     }
 
-    // Reject malformed cursors before doing any upstream work. An invalid
-    // cursor is a 400, not a 404 — the route is valid; only the pagination
-    // token is wrong. A missing cursor is fine and means "first page".
     const rawCursor = url.searchParams.get('cursor');
-    let cursor: string | null = null;
+    let pagination: CompositeCursor = {
+      version: 1,
+      media: { after: null, exhausted: false, failures: 0 },
+      collaborativeMedia: { after: null, exhausted: false, failures: 0 },
+    };
     if (rawCursor !== null) {
-      cursor = validateCursor(rawCursor);
-      if (cursor === null) {
+      const decoded = decodeCompositeCursor(rawCursor);
+      if (!decoded) {
         return errorResponse('Invalid cursor.', effectiveOrigin, 400);
       }
+      pagination = decoded;
     }
 
-    // Cache key: stable, internal, NEVER includes the token.
-    // Using the upstream URL as a cache key would put the token into
-    // the key (since we used to send it as a query param). Now the
-    // token goes in the Authorization header instead, so we can use
-    // a clean internal key. The cursor is part of the key so different
-    // pages cache independently.
-    const cacheKey = buildCacheKey(side, route.userId, graphApiVersion, cursor);
-
-    // Build the upstream request WITH the token in a Bearer header. Using
-    // URLSearchParams preserves the already-decoded opaque cursor and applies
-    // exactly one layer of query encoding when passing it to Graph as `after`.
-    const igUrl = new URL(
-      `https://graph.instagram.com/${graphApiVersion}/${route.userId}/media`,
-    );
-    igUrl.search = new URLSearchParams({
-      fields: MEDIA_FIELDS,
-      limit: '9',
-      ...(cursor ? { after: cursor } : {}),
-    }).toString();
+    const cacheKey = buildCacheKey(side, route.userId, graphApiVersion, rawCursor);
 
     try {
       const cache = caches.default;
       const cached = await cache.match(cacheKey);
       if (cached) {
-        // Always re-sanitize on hit so any pre-deploy cached entry that
-        // still carries the upstream `paging.next` URL (with the access
-        // token embedded) is cleaned up before it leaves the Worker.
-        const body = (await cached.json()) as Record<string, unknown>;
-        const paging = sanitizePaging(body);
-        const safeBody = paging ? { ...body, paging } : body;
-        return jsonResponse(safeBody, effectiveOrigin);
+        return jsonResponse(responseBodyFromCache(await cached.json()), effectiveOrigin);
       }
 
-      const upstream = await fetch(igUrl, {
-        headers: {
-          'Authorization': `Bearer ${route.accessToken}`,
-        },
-      });
-      if (!upstream.ok) {
+      const skipped: MediaPageResult = { outcome: 'skipped' };
+      const [mediaResult, collaborativeResult] = await Promise.all([
+        pagination.media.exhausted
+          ? Promise.resolve(skipped)
+          : fetchMediaPage(
+              buildMediaUrl(graphApiVersion, route.userId, 'media', pagination.media.after),
+              route.accessToken,
+            ),
+        pagination.collaborativeMedia.exhausted
+          ? Promise.resolve(skipped)
+          : fetchMediaPage(
+              buildMediaUrl(
+                graphApiVersion,
+                route.userId,
+                'collaborative_media',
+                pagination.collaborativeMedia.after,
+              ),
+              route.accessToken,
+            ),
+      ]);
+
+      if (mediaResult.outcome === 'failure') {
         console.error('Instagram API request failed', {
           side,
-          status: upstream.status,
+          source: 'media',
+          status: mediaResult.status,
         });
         return errorResponse('Instagram feed is temporarily unavailable.', effectiveOrigin, 502);
       }
 
-      // The upstream `paging.next` is a full URL that contains the
-      // access token in the query string. We strip it and surface only
-      // the opaque cursor so the token never leaves this Worker. We
-      // also inline carousel children so the client gets a single
-      // round-trip's worth of data and never has to ask Graph API
-      // again for the same feed page.
-      const rawData = (await upstream.json()) as Record<string, unknown>;
-      const rawPosts = Array.isArray(rawData.data) ? rawData.data : [];
-      const safePosts = rawPosts.filter(
-        (post): post is Record<string, unknown> => Boolean(post) && typeof post === 'object',
+      if (collaborativeResult.outcome === 'failure') {
+        console.error('Instagram collaborative media request failed', {
+          side,
+          status: collaborativeResult.status,
+        });
+      }
+
+      const mergedPosts = mergeMediaPosts(
+        postsFromResult(mediaResult),
+        postsFromResult(collaborativeResult),
       );
       const augmentedPosts = await inlineCarouselChildren(
         graphApiVersion,
         route.accessToken,
-        safePosts,
+        mergedPosts,
       );
-      const data: Record<string, unknown> = { ...rawData, data: augmentedPosts };
-      const paging = sanitizePaging(data);
-      const responseBody = paging ? { ...data, paging } : data;
-      // Cache the sanitized response under the clean key.
+      const nextPagination: CompositeCursor = {
+        version: 1,
+        media: stateFromResult(pagination.media, mediaResult),
+        collaborativeMedia: stateFromResult(
+          pagination.collaborativeMedia,
+          collaborativeResult,
+        ),
+      };
+      const hasNext =
+        !nextPagination.media.exhausted || !nextPagination.collaborativeMedia.exhausted;
+      const responseBody: Record<string, unknown> = hasNext
+        ? { data: augmentedPosts, paging: { next: encodeCompositeCursor(nextPagination) } }
+        : { data: augmentedPosts };
       const cacheable = new Response(JSON.stringify(responseBody), {
         headers: { 'Cache-Control': `public, max-age=${CACHE_TTL_SECONDS}` },
       });

@@ -36,6 +36,7 @@ next-env.d.ts.bak
 *.log
 .cache/
 .turbo/
+.wrangler/
 
 # project-specific
 # Self-review screenshots and local design/tooling directories.
