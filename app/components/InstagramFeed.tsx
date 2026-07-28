@@ -554,17 +554,8 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
   const prevSrcRef = useRef<string | null>(null);
   const prevAltRef = useRef('');
   const underRef = useRef<HTMLImageElement | null>(null);
-  const dialogRef = useRef<HTMLDivElement | null>(null);
   const [underSrc, setUnderSrc] = useState<string | null>(null);
   const [underAlt, setUnderAlt] = useState('');
-  // Auto-focus the dialog root on mount so arrow keys land on the
-  // dialog's document keydown handler, not the trigger button behind
-  // it. `tabIndex={-1}` makes the div focusable without putting it
-  // in the tab order. No-op if the browser already auto-focused
-  // something inside the dialog.
-  useEffect(() => {
-    dialogRef.current?.focus({ preventScroll: true });
-  }, []);
   // The under-layer is removed via onAnimationEnd (filtered by
   // animationName). No opacity state needed - the @keyframes
   // fades 1 -> 0 over 220ms and React unmounts on animationend.
@@ -628,21 +619,11 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
     prevSrcRef.current = null; prevAltRef.current = '';
   }, []);
   return (
-    <div ref={dialogRef} className={`${styles.lightbox} ${styles.lightboxOpen}`} role="dialog" aria-modal="true" aria-label={`Photo viewer: ${alt}`} tabIndex={-1} onClick={handleBackdropClick} onKeyDown={handleBackdropKeyDown}>
-      {/* Arrows anchored to the viewport (the .lightbox root), not the
-       * image wrap. The wrap shrink-fits to a portrait photo's narrow
-       * width, which previously parked the Next arrow at the visual
-       * center of the viewport and made clicks at the right edge fall
-       * onto the backdrop. Anchoring to the viewport keeps the
-       * hit-target where users expect it: the right edge of the
-       * screen. Both arrows are absolutely positioned siblings of
-       * .lightboxContent so the pointer-events on them aren't gated
-       * by the wrap. */}
-      {canPrev ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowPrev}`} onClick={handlePrev} aria-label="Previous photo"><span aria-hidden="true">‹</span></button> : null}
-      {canNext ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowNext}`} onClick={handleNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
+    <div className={`${styles.lightbox} ${styles.lightboxOpen}`} role="dialog" aria-modal="true" aria-label={`Photo viewer: ${alt}`} tabIndex={-1} onClick={handleBackdropClick} onKeyDown={handleBackdropKeyDown}>
       <div className={styles.lightboxContent}>
         <button type="button" className={styles.lightboxClose} onClick={onClose} aria-label="Close photo viewer"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12" /><path d="M18 6L6 18" /></svg></button>
         <div className={styles.lightboxImageWrap} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp}>
+          {canPrev ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowPrev}`} onClick={handlePrev} aria-label="Previous photo"><span aria-hidden="true">‹</span></button> : null}
           {/* Cross-fade stack. While `underSrc` is set, render an
            * under-layer (mounted fresh each swap with the prior src)
            * and let `.lightboxImage` fade its opacity 1 -> 0 via the
@@ -651,6 +632,7 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
           {underSrc ? <img ref={underRef} src={underSrc} alt={underAlt} decoding="async" aria-hidden="true" className={`${styles.lightboxImage} ${styles.lightboxUnder}`} onAnimationEnd={onUnderAnimationEnd} /> : null}
           {/* biome-ignore lint/performance/noImgElement: see above */}
           <img src={src} alt={alt} decoding="async" className={`${styles.lightboxImage}${underSrc ? ` ${styles.lightboxTopFade}` : ''}`} />
+          {canNext ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowNext}`} onClick={handleNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
         </div>
         <a href={permalink} target="_blank" rel="noopener noreferrer" className={styles.lightboxInstagram} aria-label={`Open this photo on Instagram in a new tab: ${alt}`}><span>View on Instagram</span></a>
       </div>

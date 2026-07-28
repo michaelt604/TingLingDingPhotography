@@ -340,9 +340,6 @@
  * 0 -> 1 over the same 350ms the prior image exits 1 -> 0. */
 .lightboxTopFade {
   animation: lightboxTopFade 350ms ease forwards;
-  /* Click target during the cross-fade window is the under-layer or
-   * the wrap, not the top image. Pointer events pass through. */
-  pointer-events: none;
 }
 @keyframes lightboxTopFade {
   from { opacity: 0; }
@@ -390,13 +387,8 @@
 .lightboxArrow:active {
   transform: translateY(-50%) scale(0.94);
 }
-/* Anchored to the viewport (the .lightbox root), not the wrap. The
- * wrap shrink-fits to a portrait photo's narrow width, which used to
- * park the Next arrow at the visual center of the viewport. Pinning
- * to viewport edges keeps the hit-target where users expect. The
- * safe-area insets keep arrows inside notched / curved displays. */
-.lightboxArrowPrev { left: max(20px, env(safe-area-inset-left, 0px)); }
-.lightboxArrowNext { right: max(20px, env(safe-area-inset-right, 0px)); }
+.lightboxArrowPrev { left: 8px; }
+.lightboxArrowNext { right: 8px; }
 /* Touch-friendly sizing — bump the hit area on small screens. */
 @media (max-width: 540px) {
   .lightboxArrow { width: 44px; height: 44px; }
