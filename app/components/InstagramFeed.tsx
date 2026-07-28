@@ -385,6 +385,10 @@ function PostTile({ post, handle }: PostTileProps) {
   const children = isCarousel && Array.isArray(post.children) ? post.children : null;
   const slides = children && children.length > 0 ? children : null;
   const label = post.caption ? post.caption.replace(/\s+/g, ' ').trim().slice(0, 100) : `Instagram post by @${handle}`;
+  // Shorter, visible-on-hover caption. Only render when the post has
+  // a real caption — the fallback `label` is built for the aria-label
+  // and would read weirdly as a hover overlay.
+  const caption = post.caption ? post.caption.replace(/\s+/g, ' ').trim().slice(0, 80) : null;
   const fallbackSrc = post.media_type === 'VIDEO' && post.thumbnail_url ? post.thumbnail_url : post.media_url;
   const [slideIndex, setSlideIndex] = useState(0);
   const totalSlides = slides?.length ?? 0;
@@ -425,6 +429,7 @@ function PostTile({ post, handle }: PostTileProps) {
   return (
     <div className={styles.tile}>
       <TileImageButton src={currentSrc} label={label} onOpen={openLightbox} triggerRef={triggerRef} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} />
+      {caption ? <p className={styles.tileCaption} aria-hidden="true">{caption}</p> : null}
       {canPrev || canNext ? <CarouselControls canPrev={canPrev} canNext={canNext} safeIndex={safeIndex} totalSlides={totalSlides} onPrev={goPrev} onNext={goNext} /> : null}
       {lightboxOpen ? <Lightbox src={currentSrc} alt={label} permalink={post.permalink} onClose={closeLightbox} canPrev={canPrev} canNext={canNext} onPrev={goPrev} onNext={goNext} onSwipePrev={goPrev} onSwipeNext={goNext} /> : null}
     </div>
@@ -508,6 +513,12 @@ interface LightboxProps {
 }
 
 function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNext, onSwipePrev, onSwipeNext }: LightboxProps) {
+  // Tracks whether the current <img> has finished loading. Resets to
+  // false on every `src` change so the next image fades in cleanly
+  // (the previous image fades out via the same transition).
+  const [loaded, setLoaded] = useState(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: src IS the prop the effect should re-run on; biome warns because it sees a prop reference but doesn't track parent re-renders.
+  useEffect(() => { setLoaded(false); }, [src]);
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     const previousPaddingRight = document.body.style.paddingRight;
@@ -538,9 +549,11 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
           {/* Plain <img> on purpose: we need the natural aspect ratio so
            * .lightboxImageWrap shrink-wraps to the rendered photo and the
            * arrows anchor to the image, not the viewport. The IG CDN URL
-           * is already optimally sized, so <Image> would buy us nothing. */}
+           * is already optimally sized, so <Image> would buy us nothing.
+           * The `loaded` state drives a CSS opacity transition so the
+           * image fades in once decoded (and on every carousel swap). */}
           {/* biome-ignore lint/performance/noImgElement: see comment above */}
-          <img src={src} alt={alt} decoding="async" className={styles.lightboxImage} />
+          <img src={src} alt={alt} decoding="async" onLoad={() => setLoaded(true)} onError={() => setLoaded(true)} className={`${styles.lightboxImage} ${loaded ? styles.lightboxImageLoaded : ''}`} />
           {canNext ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowNext}`} onClick={onNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
         </div>
         <a href={permalink} target="_blank" rel="noopener noreferrer" className={styles.lightboxInstagram} aria-label={`Open this photo on Instagram in a new tab: ${alt}`}><span>View on Instagram</span></a>

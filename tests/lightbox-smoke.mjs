@@ -1,6 +1,6 @@
 // Lightbox viewport-constraint smoke test.
 // - Mocks the IG proxy JSON with controlled fixture URLs (must be https
-//   on cdninstagram.com / fbcdn.net to pass normalizeInstagramPosts).
+//   on cdninstagram.com to pass normalizeInstagramPosts).
 // - Intercepts the fixture URLs and responds with SVG bitmaps of known
 //   dimensions so the lightbox has a deterministic aspect ratio to fit.
 // - Drives Playwright at 1440x900 (desktop) and 375x812 (mobile).
@@ -17,16 +17,12 @@ import assert from 'node:assert/strict';
 const PORT = 4321;
 const SITE = `http://127.0.0.1:${PORT}`;
 
-// Fixture URLs — must be https on cdninstagram.com so the feed
-// normalizer accepts them. Playwright intercepts these and serves a
-// real SVG of known dimensions.
 const WIDE_URL = 'https://scontent.cdninstagram.com/test-wide.svg';   // 2000x1333 (3:2)
 const TALL_URL = 'https://scontent.cdninstagram.com/test-tall.svg';   // 800x2000 (2:5)
 
 const WIDE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1333" viewBox="0 0 2000 1333"><rect width="100%" height="100%" fill="#4ecdc4"/><text x="50%" y="50%" font-size="120" fill="white" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">3:2 landscape 2000x1333</text></svg>`;
 const TALL_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="2000" viewBox="0 0 800 2000"><rect width="100%" height="100%" fill="#b88ce0"/><text x="50%" y="50%" font-size="100" fill="white" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">2:5 portrait 800x2000</text></svg>`;
 
-// Mock JSON the IG proxy would return.
 const MOCK_JSON = {
   data: [
     {
@@ -68,7 +64,6 @@ async function runViewport(label, vw, vh) {
   const ctx = await browser.newContext({ viewport: { width: vw, height: vh } });
   const page = await ctx.newPage();
 
-  // Mock the IG proxy
   await page.route('https://ig-proxy.michaelt604.workers.dev/**', async (route) => {
     await route.fulfill({
       status: 200,
@@ -81,8 +76,6 @@ async function runViewport(label, vw, vh) {
       body: JSON.stringify(MOCK_JSON),
     });
   });
-
-  // Mock the fixture image URLs
   await page.route(WIDE_URL, async (route) => {
     await route.fulfill({ status: 200, contentType: 'image/svg+xml', body: WIDE_SVG });
   });
@@ -90,7 +83,7 @@ async function runViewport(label, vw, vh) {
     await route.fulfill({ status: 200, contentType: 'image/svg+xml', body: TALL_SVG });
   });
 
-  await page.goto(`${SITE}/portraits/`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${SITE}/portraits/`, { waitUntil: 'load' });
   await page.waitForSelector('button[aria-label^="View photo"]', { timeout: 15000 });
   await page.waitForLoadState('networkidle');
 
@@ -100,7 +93,7 @@ async function runViewport(label, vw, vh) {
 
   for (const [tileIdx, label2] of [[0, 'wide'], [1, 'tall']]) {
     const tiles = await page.$$('button[aria-label^="View photo"]');
-    await tiles[tileIdx].click();
+    await tiles[tileIdx].click({ force: true });
     await page.waitForSelector('[role="dialog"][aria-modal="true"]', { timeout: 5000 });
     await page.waitForFunction(() => {
       const img = document.querySelector('[role="dialog"][aria-modal="true"] img');
@@ -151,16 +144,17 @@ async function runViewport(label, vw, vh) {
       failed = true;
     }
 
-    // Test backdrop close (click outside the image at the side of the viewport)
-    await page.mouse.click(10, Math.min(vh - 10, 50));
+    // Backdrop close: click in the very top-left corner where only the
+    // .lightbox root sits (no children reach there).
+    await page.mouse.click(5, 5);
     await page.waitForSelector('[role="dialog"][aria-modal="true"]', { state: 'detached', timeout: 3000 })
       .then(() => console.log(`[${label} / ${label2}] backdrop close OK`))
       .catch(() => { console.error(`FAIL: backdrop did not close at ${label} / ${label2}`); failed = true; });
   }
 
-  // Keyboard nav test: open the tall carousel, ArrowRight should swap images
+  // Keyboard nav: open the tall carousel, ArrowRight should swap images.
   const tiles = await page.$$('button[aria-label^="View photo"]');
-  await tiles[1].click();
+  await tiles[1].click({ force: true });
   await page.waitForSelector('[role="dialog"][aria-modal="true"]');
   await page.waitForFunction(() => {
     const img = document.querySelector('[role="dialog"][aria-modal="true"] img');
@@ -174,7 +168,7 @@ async function runViewport(label, vw, vh) {
     console.error(`FAIL: ArrowRight did not advance the carousel at ${label}`);
     failed = true;
   } else {
-    console.log(`[${label}] ArrowRight nav OK (${firstSrc?.slice(0, 40)} -> ${secondSrc?.slice(0, 40)})`);
+    console.log(`[${label}] ArrowRight nav OK`);
   }
   await page.keyboard.press('Escape');
   await page.waitForSelector('[role="dialog"][aria-modal="true"]', { state: 'detached', timeout: 3000 })

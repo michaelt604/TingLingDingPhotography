@@ -2,17 +2,20 @@ import styles from './Footer.module.css';
 
 interface Props {
   /** Which side this footer belongs to. Controls the IG handle and accent. */
-  side?: 'underwater' | 'portraits' | 'hub';
+  side?: 'underwater' | 'portraits';
   igHandle?: string;
   igProfileUrl?: string;
 }
 
-export function Footer({ side = 'hub', igHandle, igProfileUrl }: Props) {
+/**
+ * Footer
+ * Renders the IG follow link + copyright for the side pages.
+ * The hub doesn't render Footer (no SiteNav means the brand is
+ * already in the page itself), so this is only ever used with
+ * side === 'underwater' | 'portraits'.
+ */
+export function Footer({ side = 'underwater', igHandle, igProfileUrl }: Props) {
   const year = new Date().getFullYear();
-  // On side pages, SiteNav already shows the brand. Repeating it in
-  // the footer is noise; the hub doesn't have a SiteNav, so the
-  // footer's brand is the only place it appears there.
-  const showBrand = side === 'hub';
   return (
     <footer
       className={styles.footer}
@@ -20,12 +23,6 @@ export function Footer({ side = 'hub', igHandle, igProfileUrl }: Props) {
     >
       <div className="container">
         <div className={styles.inner}>
-          {showBrand ? (
-            <div className={styles.brand}>
-              <span className={styles.mark} aria-hidden="true">◆</span>
-              <span className={styles.name}>TingLingDing Photography</span>
-            </div>
-          ) : null}
           {igHandle && igProfileUrl && (
             <a
               className={styles.ig}

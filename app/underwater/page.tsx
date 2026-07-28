@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { SiteNav } from '../components/SiteNav';
 import { InstagramFeed } from '../components/InstagramFeed';
+import { SideIntro } from '../components/SideIntro';
 import { Footer } from '../components/Footer';
 
 export const metadata: Metadata = {
@@ -24,6 +25,7 @@ export default function UnderwaterPage() {
 
       <main id="main" tabIndex={-1}>
         <h1 className="srOnly">The world below the surface.</h1>
+        <SideIntro side="underwater" />
 
         {/* INSTAGRAM — main content */}
         <InstagramFeed

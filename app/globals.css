@@ -149,6 +149,40 @@ img { color: transparent; }
 }
 .section { padding-block: clamp(60px, 10vw, 120px); }
 
+/* ---------- Side-page intro ----------
+ * Heading + lead + status note, shown above the side-page feed.
+ * The heading is the visible H1; the .srOnly H1 inside <main>
+ * stays in place for screen readers, while this one is the
+ * design hero. */
+.sideIntro {
+  padding-block: clamp(40px, 6vw, 72px) clamp(20px, 3vw, 36px);
+  max-width: 60ch;
+  text-align: left;
+}
+.sideIntroHeading {
+  font-family: var(--ff-display);
+  font-size: clamp(36px, 6vw, 72px);
+  line-height: 1.02;
+  letter-spacing: -0.005em;
+  margin: 0 0 16px;
+  text-wrap: balance;
+}
+.sideIntroLead {
+  font-family: var(--ff-body);
+  font-size: clamp(16px, 1.6vw, 19px);
+  line-height: 1.55;
+  color: var(--ink-soft);
+  margin: 0 0 12px;
+}
+.sideIntroNote {
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0;
+}
+
 /* ---------- Buttons ---------- */
 .btn {
   display: inline-flex;

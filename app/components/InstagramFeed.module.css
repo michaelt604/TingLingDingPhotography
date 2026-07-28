@@ -37,17 +37,6 @@
   transform: translate(2px, -2px);
 }
 
-.booking {
-  margin: 0;
-  font-family: var(--ff-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-mute);
-}
-
-.embed { width: 100%; }
-
 .placeholder {
   display: grid;
   justify-items: center;
@@ -151,6 +140,41 @@
   outline: 2px solid var(--accent);
   outline-offset: -2px;
   border-radius: 8px;
+}
+/*
+ * Hover caption overlay. Hidden by default; fades up from the bottom
+ * when the tile is hovered (only on hover-capable devices). The
+ * gradient gives the caption readable contrast over arbitrary photo
+ * tones. aria-hidden is applied in the JSX so screen readers don't
+ * read the caption twice (the lightbox already exposes the full
+ * alt text).
+ */
+.tileCaption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  margin: 0;
+  padding: 24px 14px 14px;
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0) 100%);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 200ms ease, transform 200ms ease;
+  /* On touch devices (no hover), the caption is unreachable — keep
+   * hidden so it doesn't block the carousel button area. */
+}
+@media (hover: hover) {
+  .tile:hover .tileCaption {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 /*
  * Carousel navigation. Buttons are rendered only when movement is possible,
@@ -267,6 +291,16 @@
   max-width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
   max-height: calc(100dvh - 120px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   object-fit: contain;
+  /* Fade in once the image has decoded (the <img> flips its class
+   * to .lightboxImageLoaded via onLoad). The 200ms transition is
+   * also reused for carousel swaps: src change resets `loaded` and
+   * the new image fades in, while the wrap keeps the arrows
+   * anchored to the same bounds. */
+  opacity: 0;
+  transition: opacity 200ms ease;
+}
+.lightboxImageLoaded {
+  opacity: 1;
 }
 /*
  * Lightbox prev/next arrows. Rendered as siblings of <Image> inside
