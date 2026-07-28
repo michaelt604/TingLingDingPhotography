@@ -73,6 +73,11 @@ async function runViewport(label, vw, vh) {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
       body: JSON.stringify(MOCK_JSON),
     });
   });
