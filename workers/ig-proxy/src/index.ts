@@ -35,6 +35,10 @@
  *                       wrangler secret put IG_USER_ID_UNDERWATER
  *                       wrangler secret put IG_ACCESS_TOKEN_PORTRAITS
  *                       wrangler secret put IG_USER_ID_PORTRAITS
+ *                       wrangler secret put IG_COLLAB_ACCESS_TOKEN_UNDERWATER
+ *                       wrangler secret put IG_COLLAB_USER_ID_UNDERWATER
+ *                       wrangler secret put IG_COLLAB_ACCESS_TOKEN_PORTRAITS
+ *                       wrangler secret put IG_COLLAB_USER_ID_PORTRAITS
  *  5. Deploy:           wrangler deploy
  *  6. Set NEXT_PUBLIC_IG_PROXY_URL in your Next.js env to the
  *     deployed worker URL (e.g. https://ig-proxy.<you>.workers.dev)
@@ -85,6 +89,10 @@ export interface Env {
   IG_ACCESS_TOKEN_UNDERWATER: string;
   IG_USER_ID_PORTRAITS: string;
   IG_ACCESS_TOKEN_PORTRAITS: string;
+  IG_COLLAB_USER_ID_UNDERWATER?: string;
+  IG_COLLAB_ACCESS_TOKEN_UNDERWATER?: string;
+  IG_COLLAB_USER_ID_PORTRAITS?: string;
+  IG_COLLAB_ACCESS_TOKEN_PORTRAITS?: string;
   /**
    * Comma-separated HTTPS allowlist. Each entry must be an HTTPS URL
    * with no credentials, no path beyond "/", no query, and no fragment.
@@ -130,12 +138,34 @@ export function errorResponse(message: string, origin: string, status = 500): Re
   return jsonResponse({ error: message }, origin, status, 'no-store');
 }
 
-function routeFor(path: string, env: Env): { userId: string; accessToken: string } | null {
+interface ApiCredentials {
+  userId: string;
+  accessToken: string;
+}
+
+interface FeedRoute {
+  owned: ApiCredentials;
+  collaborative: ApiCredentials;
+}
+
+function routeFor(path: string, env: Env): FeedRoute | null {
   if (path === 'underwater') {
-    return { userId: env.IG_USER_ID_UNDERWATER, accessToken: env.IG_ACCESS_TOKEN_UNDERWATER };
+    return {
+      owned: { userId: env.IG_USER_ID_UNDERWATER, accessToken: env.IG_ACCESS_TOKEN_UNDERWATER },
+      collaborative: {
+        userId: env.IG_COLLAB_USER_ID_UNDERWATER ?? '',
+        accessToken: env.IG_COLLAB_ACCESS_TOKEN_UNDERWATER ?? '',
+      },
+    };
   }
   if (path === 'portraits') {
-    return { userId: env.IG_USER_ID_PORTRAITS, accessToken: env.IG_ACCESS_TOKEN_PORTRAITS };
+    return {
+      owned: { userId: env.IG_USER_ID_PORTRAITS, accessToken: env.IG_ACCESS_TOKEN_PORTRAITS },
+      collaborative: {
+        userId: env.IG_COLLAB_USER_ID_PORTRAITS ?? '',
+        accessToken: env.IG_COLLAB_ACCESS_TOKEN_PORTRAITS ?? '',
+      },
+    };
   }
   return null;
 }
@@ -245,9 +275,10 @@ async function fetchCarouselChildren(
   graphApiVersion: string,
   parentId: string,
   accessToken: string,
+  graphApiHost = 'graph.instagram.com',
 ): Promise<unknown[]> {
   const url =
-    `https://graph.instagram.com/${graphApiVersion}/${encodeURIComponent(parentId)}/children` +
+    `https://${graphApiHost}/${graphApiVersion}/${encodeURIComponent(parentId)}/children` +
     `?fields=${CHILDREN_FIELDS}&limit=10`;
   try {
     const response = await fetch(url, {
@@ -277,13 +308,14 @@ export async function inlineCarouselChildren(
   graphApiVersion: string,
   accessToken: string,
   posts: Record<string, unknown>[],
+  graphApiHost = 'graph.instagram.com',
 ): Promise<Record<string, unknown>[]> {
   return Promise.all(
     posts.map(async (post) => {
       if (post.media_type !== 'CAROUSEL_ALBUM') return post;
       const id = post.id;
       if (typeof id !== 'string') return post;
-      const children = await fetchCarouselChildren(graphApiVersion, id, accessToken);
+      const children = await fetchCarouselChildren(graphApiVersion, id, accessToken, graphApiHost);
       return children.length > 0 ? { ...post, children } : post;
     }),
   );
@@ -349,7 +381,7 @@ export function resolveGraphApiVersion(env: Env): string | null {
 // Returns null when the value is empty, too long, or malformed.
 const MAX_CURSOR_LENGTH = 256;
 const MAX_CLIENT_CURSOR_LENGTH = 1024;
-const CACHE_SCHEMA_VERSION = 'collaborative-v1';
+const CACHE_SCHEMA_VERSION = 'collaborative-v2';
 
 interface SourceCursorState {
   after: string | null;
@@ -472,9 +504,10 @@ function buildMediaUrl(
   userId: string,
   endpoint: 'media' | 'collaborative_media',
   after: string | null,
+  graphApiHost = 'graph.instagram.com',
 ): URL {
   const url = new URL(
-    `https://graph.instagram.com/${graphApiVersion}/${encodeURIComponent(userId)}/${endpoint}`,
+    `https://${graphApiHost}/${graphApiVersion}/${encodeURIComponent(userId)}/${endpoint}`,
   );
   url.search = new URLSearchParams({
     fields: MEDIA_FIELDS,
@@ -608,8 +641,14 @@ export default {
         env.IG_USER_ID_PORTRAITS &&
         env.IG_ACCESS_TOKEN_PORTRAITS,
       );
+      const collaborativeReady = Boolean(
+        env.IG_COLLAB_USER_ID_UNDERWATER &&
+        env.IG_COLLAB_ACCESS_TOKEN_UNDERWATER &&
+        env.IG_COLLAB_USER_ID_PORTRAITS &&
+        env.IG_COLLAB_ACCESS_TOKEN_PORTRAITS,
+      );
       return jsonResponse(
-        { ok: ready, version: graphApiVersion },
+        { ok: ready, collaborativeReady, version: graphApiVersion },
         effectiveOrigin,
         ready ? 200 : 503,
         'no-store',
@@ -622,7 +661,7 @@ export default {
       return errorResponse(`Unknown route: ${side}. Use /underwater or /portraits.`, effectiveOrigin, 404);
     }
 
-    if (!route.userId || !route.accessToken) {
+    if (!route.owned.userId || !route.owned.accessToken) {
       return errorResponse('Service configuration is incomplete.', effectiveOrigin, 503);
     }
 
@@ -640,7 +679,7 @@ export default {
       pagination = decoded;
     }
 
-    const cacheKey = buildCacheKey(side, route.userId, graphApiVersion, rawCursor);
+    const cacheKey = buildCacheKey(side, route.owned.userId, graphApiVersion, rawCursor);
 
     try {
       const cache = caches.default;
@@ -654,19 +693,28 @@ export default {
         pagination.media.exhausted
           ? Promise.resolve(skipped)
           : fetchMediaPage(
-              buildMediaUrl(graphApiVersion, route.userId, 'media', pagination.media.after),
-              route.accessToken,
+              buildMediaUrl(
+                graphApiVersion,
+                route.owned.userId,
+                'media',
+                pagination.media.after,
+                'graph.instagram.com',
+              ),
+              route.owned.accessToken,
             ),
         pagination.collaborativeMedia.exhausted
           ? Promise.resolve(skipped)
+          : !route.collaborative.userId || !route.collaborative.accessToken
+            ? Promise.resolve({ outcome: 'success', payload: { data: [] } } as MediaPageResult)
           : fetchMediaPage(
               buildMediaUrl(
                 graphApiVersion,
-                route.userId,
+                route.collaborative.userId,
                 'collaborative_media',
                 pagination.collaborativeMedia.after,
+                'graph.facebook.com',
               ),
-              route.accessToken,
+              route.collaborative.accessToken,
             ),
       ]);
 
@@ -686,15 +734,19 @@ export default {
         });
       }
 
-      const mergedPosts = mergeMediaPosts(
-        postsFromResult(mediaResult),
-        postsFromResult(collaborativeResult),
-      );
-      const augmentedPosts = await inlineCarouselChildren(
+      const ownedPosts = await inlineCarouselChildren(
         graphApiVersion,
-        route.accessToken,
-        mergedPosts,
+        route.owned.accessToken,
+        postsFromResult(mediaResult),
+        'graph.instagram.com',
       );
+      const collaborativePosts = await inlineCarouselChildren(
+        graphApiVersion,
+        route.collaborative.accessToken,
+        postsFromResult(collaborativeResult),
+        'graph.facebook.com',
+      );
+      const augmentedPosts = mergeMediaPosts(ownedPosts, collaborativePosts);
       const nextPagination: CompositeCursor = {
         version: 1,
         media: stateFromResult(pagination.media, mediaResult),

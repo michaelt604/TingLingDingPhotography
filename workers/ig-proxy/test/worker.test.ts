@@ -136,6 +136,10 @@ const readyEnv: Env = {
   IG_ACCESS_TOKEN_UNDERWATER: 'secret-1',
   IG_USER_ID_PORTRAITS: '2',
   IG_ACCESS_TOKEN_PORTRAITS: 'secret-2',
+  IG_COLLAB_USER_ID_UNDERWATER: '3',
+  IG_COLLAB_ACCESS_TOKEN_UNDERWATER: 'collab-secret-1',
+  IG_COLLAB_USER_ID_PORTRAITS: '4',
+  IG_COLLAB_ACCESS_TOKEN_PORTRAITS: 'collab-secret-2',
   ALLOWED_ORIGIN: 'https://example.com',
   GRAPH_API_VERSION: 'v23.0',
 };
@@ -212,7 +216,8 @@ test('merges owned and collaborative posts by descending timestamp, dedupes ids,
     async (input, init) => {
       const url = requestPath(input);
       calls.push(url);
-      assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer secret-1');
+      const expectedToken = url.hostname === 'graph.facebook.com' ? 'collab-secret-1' : 'secret-1';
+      assert.equal(new Headers(init?.headers).get('Authorization'), `Bearer ${expectedToken}`);
       if (url.pathname.endsWith('/media')) {
         return upstreamPage([
           {
@@ -274,10 +279,15 @@ test('merges owned and collaborative posts by descending timestamp, dedupes ids,
       const listCalls = calls.filter((url) => !url.pathname.endsWith('/children'));
       assert.deepEqual(
         listCalls.map((url) => url.pathname).sort(),
-        ['/v23.0/1/collaborative_media', '/v23.0/1/media'],
+        ['/v23.0/1/media', '/v23.0/3/collaborative_media'],
       );
       for (const url of listCalls) {
-        assert.equal(url.hostname, 'graph.instagram.com');
+        assert.equal(
+          url.hostname,
+          url.pathname.endsWith('/collaborative_media')
+            ? 'graph.facebook.com'
+            : 'graph.instagram.com',
+        );
         assert.equal(url.searchParams.get('limit'), '9');
         assert.equal(
           url.searchParams.get('fields'),
@@ -294,7 +304,8 @@ test('keeps tokens and upstream next URLs out of responses and cache keys', asyn
     async (input, init) => {
       const url = requestPath(input);
       requestUrls.push(url.href);
-      assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer secret-1');
+      const expectedToken = url.hostname === 'graph.facebook.com' ? 'collab-secret-1' : 'secret-1';
+      assert.equal(new Headers(init?.headers).get('Authorization'), `Bearer ${expectedToken}`);
       return upstreamPage([], url.pathname.endsWith('/collaborative_media') ? 'collab-after' : 'media-after');
     },
     async (capture) => {
@@ -758,7 +769,11 @@ test('handler keeps non-browser behavior deterministic and valid', async () => {
   // Deterministic single origin = lexicographically first allowlist entry.
   assert.equal(acao, 'https://tinglingdingphotography.com');
   assert.equal(response.headers.get('Cache-Control'), 'no-store');
-  assert.deepEqual(await response.json(), { ok: true, version: 'v23.0' });
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    collaborativeReady: true,
+    version: 'v23.0',
+  });
 });
 
 test('handler rejects mismatched browser origins in the single-origin dev allowlist', async () => {
@@ -779,7 +794,11 @@ test('health reflects readiness without caching', async () => {
     readyEnv,
   );
   assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), { ok: true, version: 'v23.0' });
+  assert.deepEqual(await response.json(), {
+    ok: true,
+    collaborativeReady: true,
+    version: 'v23.0',
+  });
   assert.equal(response.headers.get('Cache-Control'), 'no-store');
 });
 

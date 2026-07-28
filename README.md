@@ -263,7 +263,7 @@ way to point it at Pages is to move DNS to Cloudflare.
 
 ### Environment variables
 
-The tracked `.env.production` sets `NEXT_PUBLIC_IG_PROXY_URL` to the public Worker at `https://ig-proxy.michaelt604.workers.dev`. GitHub Actions validates this exact HTTPS host before every production build. Worker access tokens remain existing Cloudflare Worker secrets and must never be placed in Pages, repository files, or GitHub build variables.
+The tracked `.env.production` sets `NEXT_PUBLIC_IG_PROXY_URL` to the public Worker at `https://ig-proxy.michaelt604.workers.dev`. GitHub Actions validates this exact HTTPS host before every production build. Worker access tokens remain existing Cloudflare Worker secrets and must never be placed in Pages, repository files, or GitHub build variables. To include posts where the account is a collaborator, also set `IG_COLLAB_USER_ID_UNDERWATER`, `IG_COLLAB_ACCESS_TOKEN_UNDERWATER`, `IG_COLLAB_USER_ID_PORTRAITS`, and `IG_COLLAB_ACCESS_TOKEN_PORTRAITS` on the Worker. The collaborator tokens use the Facebook Graph API permissions configured for each connected Instagram account.
 
 
 ---
