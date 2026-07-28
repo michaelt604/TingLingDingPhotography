@@ -275,21 +275,34 @@
   display: inline-block;
   max-width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
   max-height: calc(100dvh - 120px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  /* Safety net: the wrap already bounds the image via max-width /
+   * max-height, but if a future edit drops one of them, this
+   * prevents the rendered photo from overflowing the viewport
+   * (which would push the "View on Instagram" link off-screen
+   * and break the fit-to-viewport contract). */
+  overflow: hidden;
   touch-action: pan-y pinch-zoom;
 }
 .lightboxImage {
-  /* Shrink-to-fit inside the viewport while preserving the natural
-   * aspect ratio. `width:auto; height:auto` makes the browser pick
-   * the largest size that fits both max-width and max-height
-   * without distorting the photo. The wrap inline-block above
-   * shrink-wraps to whatever pixel dimensions the browser ends up
-   * using, so the absolutely-positioned arrows stay glued to the
-   * photo's edges. */
   display: block;
   width: auto;
   height: auto;
   max-width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  max-height: calc(100dvh - 120px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   object-fit: contain;
+}
+/* Cross-fade under-layer. Mounted only during the brief window
+ * between when the user navigates the carousel and when the new
+ * top image has fully painted. Absolutely positioned over the
+ * top .lightboxImage so the same wrap bounds both. Opacity 1
+ * initially, fading to 0 via the inline style which React resets
+ * to 0 once `underSrc` becomes null. */
+.lightboxUnder {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  transition: opacity 220ms ease;
+  pointer-events: none;
 }
 /*
  * Lightbox prev/next arrows. Rendered as siblings of <Image> inside

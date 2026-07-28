@@ -513,6 +513,54 @@ interface LightboxProps {
 }
 
 function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNext, onSwipePrev, onSwipeNext }: LightboxProps) {
+  // ---- Cross-fade on carousel swap --------------------------------
+  // `prevSrcRef` snapshots the live src synchronously on user nav
+  // (arrow click / swipe / keyboard ArrowLeft/Right). A ref - not
+  // state - so the snapshot is in place before React flushes the
+  // parent's state update; without this, the new src would already
+  // be in `src` by the time the effect runs and there'd be nothing
+  // to cross-fade from.
+  const prevSrcRef = useRef<string | null>(null);
+  const prevAltRef = useRef('');
+  const underRef = useRef<HTMLImageElement | null>(null);
+  const [underSrc, setUnderSrc] = useState<string | null>(null);
+  const [underAlt, setUnderAlt] = useState('');
+  // Opacity of the under-layer. Starts at 1 (matches the layer it
+  // replaces), then a requestAnimationFrame drops it to 0 so the
+  // CSS opacity transition fires. We never reset to 1 - the under-
+  // layer unmounts on transitionend and the next mount comes back
+  // at the default 1, ready to fade out again.
+  const [underOpacity, setUnderOpacity] = useState(1);
+  // Flip opacity 1 -> 0 exactly one frame after `underSrc` mounts so
+  // the CSS transition has a non-trivial starting value to animate
+  // from. Without this the layer paints and stays at opacity 1.
+  useEffect(() => {
+    if (underSrc === null) return;
+    const id = requestAnimationFrame(() => setUnderOpacity(0));
+    return () => cancelAnimationFrame(id);
+  }, [underSrc]);
+  const handlePrev = useCallback(() => {
+    prevSrcRef.current = src; prevAltRef.current = alt;
+    setUnderSrc(src); setUnderAlt(alt);
+    onPrev();
+  }, [src, alt, onPrev]);
+  const handleNext = useCallback(() => {
+    prevSrcRef.current = src; prevAltRef.current = alt;
+    setUnderSrc(src); setUnderAlt(alt);
+    onNext();
+  }, [src, alt, onNext]);
+  const handleSwipePrev = useCallback(() => {
+    prevSrcRef.current = src; prevAltRef.current = alt;
+    setUnderSrc(src); setUnderAlt(alt);
+    onSwipePrev();
+  }, [src, alt, onSwipePrev]);
+  const handleSwipeNext = useCallback(() => {
+    prevSrcRef.current = src; prevAltRef.current = alt;
+    setUnderSrc(src); setUnderAlt(alt);
+    onSwipeNext();
+  }, [src, alt, onSwipeNext]);
+  // Body-overflow lock while the lightbox is open (prevents the
+  // underlying feed from scrolling under the modal).
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     const previousPaddingRight = document.body.style.paddingRight;
@@ -521,32 +569,50 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
     if (scrollbarWidth > 0) document.body.style.paddingRight = `${scrollbarWidth}px`;
     return () => { document.body.style.overflow = previousOverflow; document.body.style.paddingRight = previousPaddingRight; };
   }, []);
+  // Keyboard nav: ArrowLeft / ArrowRight drive the same wrapped
+  // handlers so swipes and key presses share the snapshot path.
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') { event.stopPropagation(); onClose(); return; }
-      if (event.key === 'ArrowLeft' && canPrev) { event.preventDefault(); onPrev(); return; }
-      if (event.key === 'ArrowRight' && canNext) { event.preventDefault(); onNext(); return; }
+      if (event.key === 'ArrowLeft' && canPrev) { event.preventDefault(); handlePrev(); return; }
+      if (event.key === 'ArrowRight' && canNext) { event.preventDefault(); handleNext(); return; }
     };
     document.addEventListener('keydown', handleKey); return () => document.removeEventListener('keydown', handleKey);
-  }, [onClose, onPrev, onNext, canPrev, canNext]);
+  }, [onClose, handlePrev, handleNext, canPrev, canNext]);
   const handleBackdropClick = useCallback((event: MouseEvent<HTMLDivElement>) => { if (event.target === event.currentTarget) onClose(); }, [onClose]);
   const handleBackdropKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onClose(); } }, [onClose]);
   const swipeStart = useRef<{ x: number; y: number } | null>(null);
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => { swipeStart.current = { x: event.clientX, y: event.clientY }; };
-  const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => { const start = swipeStart.current; swipeStart.current = null; if (!start) return; const dx = event.clientX - start.x; const dy = event.clientY - start.y; if (Math.abs(dx) < 48 || Math.abs(dy) > Math.abs(dx)) return; if (dx < 0) onSwipeNext(); else onSwipePrev(); };
+  const handlePointerUp = (event: PointerEvent<HTMLDivElement>) => {
+    const start = swipeStart.current; swipeStart.current = null;
+    if (!start) return;
+    const dx = event.clientX - start.x; const dy = event.clientY - start.y;
+    if (Math.abs(dx) < 48 || Math.abs(dy) > Math.abs(dx)) return;
+    if (dx < 0) handleSwipeNext(); else handleSwipePrev();
+  };
+  // Transitionend on the under-layer fires once the cross-fade
+  // (opacity 1 -> 0) completes; unmount it so the next swap starts
+  // clean. Filter by `e.propertyName` because every opacity change
+  // would otherwise retrigger this if we listen to all events.
+  const onUnderTransitionEnd = useCallback((event: React.TransitionEvent<HTMLImageElement>) => {
+    if (event.propertyName !== 'opacity') return;
+    setUnderSrc(null); setUnderAlt('');
+    prevSrcRef.current = null; prevAltRef.current = '';
+  }, []);
   return (
     <div className={`${styles.lightbox} ${styles.lightboxOpen}`} role="dialog" aria-modal="true" aria-label={`Photo viewer: ${alt}`} tabIndex={-1} onClick={handleBackdropClick} onKeyDown={handleBackdropKeyDown}>
       <div className={styles.lightboxContent}>
         <button type="button" className={styles.lightboxClose} onClick={onClose} aria-label="Close photo viewer"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12" /><path d="M18 6L6 18" /></svg></button>
         <div className={styles.lightboxImageWrap} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp}>
-          {canPrev ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowPrev}`} onClick={onPrev} aria-label="Previous photo"><span aria-hidden="true">‹</span></button> : null}
-          {/* Plain <img> on purpose: we need the natural aspect ratio so
-           * .lightboxImageWrap shrink-wraps to the rendered photo and the
-           * arrows anchor to the image, not the viewport. The IG CDN URL
-           * is already optimally sized, so <Image> would buy us nothing. */}
-          {/* biome-ignore lint/performance/noImgElement: see comment above */}
+          {canPrev ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowPrev}`} onClick={handlePrev} aria-label="Previous photo"><span aria-hidden="true">‹</span></button> : null}
+          {/* Cross-fade stack. While `underSrc` is set, render an
+           * under-layer (mounted fresh each swap with the prior src)
+           * and let `.lightboxImage` fade its opacity 1 -> 0 via the
+           * the live src; opacity 1 throughout. Both use natural
+           * sizing so the wrap shrink-fits and arrows stay anchored. */}
+          {underSrc ? <img ref={underRef} src={underSrc} alt={underAlt} decoding="async" aria-hidden="true" className={`${styles.lightboxImage} ${styles.lightboxUnder}`} style={{ opacity: underOpacity }} onTransitionEnd={onUnderTransitionEnd} /> : null}
+          {/* biome-ignore lint/performance/noImgElement: see above */}
           <img src={src} alt={alt} decoding="async" className={styles.lightboxImage} />
-          {canNext ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowNext}`} onClick={onNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
         </div>
         <a href={permalink} target="_blank" rel="noopener noreferrer" className={styles.lightboxInstagram} aria-label={`Open this photo on Instagram in a new tab: ${alt}`}><span>View on Instagram</span></a>
       </div>
