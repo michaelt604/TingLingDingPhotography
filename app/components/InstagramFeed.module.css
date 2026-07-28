@@ -119,7 +119,7 @@
  * focus order, and click handling stay untouched. Same absolute
  * positioning and object-fit as .tileImage so the prior photo
  * visually matches the new one while it fades out. The keyframes
- * fade 1 -> 0 over 350ms; onAnimationEnd unmounts the element. */
+ * fade 1 -> 0 over 220ms; onAnimationEnd unmounts the element. */
 .tileUnder {
   position: absolute;
   inset: 0;
@@ -128,7 +128,7 @@
   object-fit: cover;
   z-index: 0;
   pointer-events: none;
-  animation: tileUnderFade 350ms ease forwards;
+  animation: tileUnderFade 220ms ease forwards;
 }
 @keyframes tileUnderFade {
   from { opacity: 1; }
@@ -328,7 +328,7 @@
    * fresh on every carousel swap, so the keyframes always plays
    * from frame 0. No `opacity` baseline needed - the keyframes
    * owns the animation start (`from { opacity: 1 }`) and end. */
-  animation: lightboxUnderFade 350ms ease forwards;
+  animation: lightboxUnderFade 220ms ease forwards;
 }
 @keyframes lightboxUnderFade {
   from { opacity: 1; }
@@ -337,9 +337,9 @@
 /* Symmetric cross-fade for the top image. Mounted only while the
  * under-layer is fading out (i.e. when `underSrc` is set), so each
  * fresh mount plays the keyframes from frame 0 — new image enters
- * 0 -> 1 over the same 350ms the prior image exits 1 -> 0. */
+ * 0 -> 1 over the same 220ms the prior image exits 1 -> 0. */
 .lightboxTopFade {
-  animation: lightboxTopFade 350ms ease forwards;
+  animation: lightboxTopFade 220ms ease forwards;
 }
 @keyframes lightboxTopFade {
   from { opacity: 0; }
