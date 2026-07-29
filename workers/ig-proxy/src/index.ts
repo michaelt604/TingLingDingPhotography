@@ -381,7 +381,7 @@ export function resolveGraphApiVersion(env: Env): string | null {
 // Returns null when the value is empty, too long, or malformed.
 const MAX_CURSOR_LENGTH = 256;
 const MAX_CLIENT_CURSOR_LENGTH = 1024;
-const CACHE_SCHEMA_VERSION = 'collaborative-v2';
+const CACHE_SCHEMA_VERSION = 'collaborative-v3';
 
 interface SourceCursorState {
   after: string | null;
