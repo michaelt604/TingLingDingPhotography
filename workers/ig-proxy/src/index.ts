@@ -868,87 +868,33 @@ async function fetchCollaborativeMediaPage(
   userId: string,
   accessToken: string,
   after: string | null,
-  graphApiHost: 'graph.facebook.com' | 'graph.instagram.com' = 'graph.facebook.com',
-  fallback?: {
-    accessToken: string;
-    graphApiHost: 'graph.facebook.com' | 'graph.instagram.com';
-  },
+  graphApiHost: 'graph.facebook.com' | 'graph.instagram.com' = 'graph.instagram.com',
 ): Promise<MediaPageResult> {
-  const fetchOnce = async (
-    token: string,
-    host: 'graph.facebook.com' | 'graph.instagram.com',
-    fields: string,
-  ): Promise<MediaPageResult> => {
-    const url = buildMediaUrl(
+  const expanded = await fetchMediaPage(
+    buildMediaUrl(
       graphApiVersion,
       userId,
       'collaborative_media',
       after,
-      host,
-      fields,
-    );
-    try {
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` },
-      });
-      if (response.ok) {
-        const payload = (await response.json()) as unknown;
-        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-          return { outcome: 'failure' };
-        }
-        if (!Array.isArray((payload as Record<string, unknown>).data)) {
-          return { outcome: 'failure' };
-        }
-        return { outcome: 'success', payload: payload as Record<string, unknown> };
-      }
-      const errorPayload = await parseUpstreamJson(response);
-      console.error(
-        'Instagram collaborative media request failed',
-        { host, status: response.status, error: safeUpstreamError(errorPayload) },
-      );
-      return { outcome: 'failure', status: response.status };
-    } catch (error) {
-      console.error(
-        'Instagram collaborative media request failed',
-        { host, error: error instanceof Error ? error.name : 'UnknownError' },
-      );
-      return { outcome: 'failure' };
-    }
-  };
-
-  const expanded = await fetchOnce(accessToken, graphApiHost, COLLABORATIVE_MEDIA_FIELDS);
+      graphApiHost,
+      COLLABORATIVE_MEDIA_FIELDS,
+    ),
+    accessToken,
+  );
   if (expanded.outcome !== 'failure') return expanded;
 
   // Keep the feed available if a Graph API version rejects nested fields;
   // child expansion will still be attempted per carousel below.
-  const plain = await fetchOnce(accessToken, graphApiHost, MEDIA_FIELDS);
-  if (plain.outcome !== 'failure') return plain;
-
-  // Primary credential's expanded + plain attempts both failed. Retry
-  // once with a static collaborator credential on graph.facebook.com
-  // when it differs from the primary, so an expired KV/Instagram-login
-  // token doesn't permanently hide collaborator posts.
-  if (
-    !fallback ||
-    !fallback.accessToken ||
-    (fallback.accessToken === accessToken && fallback.graphApiHost === graphApiHost)
-  ) {
-    return plain;
-  }
-
-  console.error(
-    'Instagram collaborative media request failed; retrying with static collaborator credential',
-    { host: graphApiHost, status: plain.status },
+  return fetchMediaPage(
+    buildMediaUrl(
+      graphApiVersion,
+      userId,
+      'collaborative_media',
+      after,
+      graphApiHost,
+    ),
+    accessToken,
   );
-
-  const fallbackExpanded = await fetchOnce(
-    fallback.accessToken,
-    fallback.graphApiHost,
-    COLLABORATIVE_MEDIA_FIELDS,
-  );
-  if (fallbackExpanded.outcome !== 'failure') return fallbackExpanded;
-
-  return fetchOnce(fallback.accessToken, fallback.graphApiHost, MEDIA_FIELDS);
 }
 
 function mergeMediaPosts(
@@ -1233,10 +1179,6 @@ export default {
                 collaborativeToken.accessToken,
                 pagination.collaborativeMedia.after,
                 collaborativeToken.graphApiHost,
-                {
-                  accessToken: route.collaborative.accessToken,
-                  graphApiHost: 'graph.facebook.com',
-                },
               ),
       ]);
 

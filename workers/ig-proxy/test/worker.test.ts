@@ -890,13 +890,14 @@ test('collaborative failures retry once, recover, and then stop after two consec
   );
 });
 
-test('falls back to the static graph.facebook.com collaborator credential when the KV token fails', async () => {
+test('uses the resolved Instagram-host token for collaborative_media on graph.instagram.com', async () => {
   const store = new MemoryKV();
   await store.put('ig-collab-child-token:underwater', 'kv-collab-secret');
   const env = {
     ...readyEnv,
     IG_TOKEN_STORE: store as unknown as KVNamespace,
   };
+  let instagramCollaborativeCalls = 0;
   let facebookCollaborativeCalls = 0;
 
   await withWorkerMocks(
@@ -918,25 +919,15 @@ test('falls back to the static graph.facebook.com collaborator credential when t
         ]);
       }
 
-      // Primary collaborative call uses the KV-stored Instagram-host token.
-      // Simulate that credential failing on graph.instagram.com.
+      // Instagram's `collaborative_media` lives on graph.instagram.com for
+      // Business Login tokens; the Worker must hit that host with the
+      // resolved Instagram-host token, never the Facebook Graph host.
       if (
         url.hostname === 'graph.instagram.com' &&
         url.pathname.endsWith('/collaborative_media')
       ) {
+        instagramCollaborativeCalls += 1;
         assert.equal(token, 'Bearer kv-collab-secret');
-        return new Response(null, { status: 503 });
-      }
-
-      // Fallback collaborative call uses the static configured token on
-      // graph.facebook.com. Returns the collaborator post plus a duplicate
-      // of the owned post so dedup + merge ordering can both be checked.
-      if (
-        url.hostname === 'graph.facebook.com' &&
-        url.pathname.endsWith('/collaborative_media')
-      ) {
-        facebookCollaborativeCalls += 1;
-        assert.equal(token, 'Bearer collab-secret-1');
         return upstreamPage([
           {
             id: 'collab-post',
@@ -951,6 +942,10 @@ test('falls back to the static graph.facebook.com collaborator credential when t
         ]);
       }
 
+      if (url.hostname === 'graph.facebook.com') {
+        facebookCollaborativeCalls += 1;
+      }
+
       throw new Error(`unexpected request: ${url.href}`);
     },
     async () => {
@@ -962,9 +957,14 @@ test('falls back to the static graph.facebook.com collaborator credential when t
 
       assert.equal(response.status, 200);
       assert.equal(
-        facebookCollaborativeCalls > 0,
-        true,
-        'expected the fallback graph.facebook.com collaborator request to be issued',
+        instagramCollaborativeCalls,
+        1,
+        'expected exactly one graph.instagram.com collaborative_media request',
+      );
+      assert.equal(
+        facebookCollaborativeCalls,
+        0,
+        'must not call graph.facebook.com for collaborative_media',
       );
 
       const body = JSON.parse(responseText) as {
@@ -986,11 +986,6 @@ test('falls back to the static graph.facebook.com collaborator credential when t
         responseText.includes('kv-collab-secret'),
         false,
         'response body must not leak the KV collaborator token',
-      );
-      assert.equal(
-        responseText.includes('collab-secret-1'),
-        false,
-        'response body must not leak the static configured collaborator token',
       );
     },
   );
