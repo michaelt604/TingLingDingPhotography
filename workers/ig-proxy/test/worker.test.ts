@@ -149,9 +149,35 @@ const productionEnv: Env = {
   ALLOWED_ORIGIN: productionAllowlist,
 };
 
+function oauthTestEnv(store: MemoryKV): Env {
+  return {
+    ...readyEnv,
+    IG_INSTAGRAM_APP_ID: 'test-app-id',
+    IG_INSTAGRAM_APP_SECRET: 'test-app-secret',
+    IG_INSTAGRAM_REDIRECT_URI: 'https://ig-proxy.example/oauth/instagram/callback',
+    IG_TOKEN_STORE: store as unknown as KVNamespace,
+  };
+}
+
 interface CacheCapture {
   matchedKeys: Request[];
   puts: Array<{ key: Request; body: string }>;
+}
+
+class MemoryKV {
+  private readonly values = new Map<string, string>();
+
+  async get(key: string): Promise<string | null> {
+    return this.values.get(key) ?? null;
+  }
+
+  async put(key: string, value: string): Promise<void> {
+    this.values.set(key, value);
+  }
+
+  async delete(key: string): Promise<void> {
+    this.values.delete(key);
+  }
 }
 
 async function withWorkerMocks(
@@ -291,7 +317,9 @@ test('merges owned and collaborative posts by descending timestamp, dedupes ids,
         assert.equal(url.searchParams.get('limit'), '9');
         assert.equal(
           url.searchParams.get('fields'),
-          'id,media_type,media_url,permalink,thumbnail_url,caption,timestamp',
+          url.pathname.endsWith('/collaborative_media')
+            ? 'id,media_type,media_url,permalink,thumbnail_url,caption,timestamp,children{id,media_type,media_url,permalink,thumbnail_url}'
+            : 'id,media_type,media_url,permalink,thumbnail_url,caption,timestamp',
         );
       }
     },
@@ -448,6 +476,351 @@ test('preserves the 502 response when owned media fails', async () => {
   );
 });
 
+test('preserves collaborator carousel stacks with the owned Instagram fallback', async () => {
+  const calls: URL[] = [];
+  await withWorkerMocks(
+    async (input, init) => {
+      const url = requestPath(input);
+      calls.push(url);
+      const token = new Headers(init?.headers).get('Authorization');
+      if (url.pathname.endsWith('/media')) {
+        assert.equal(token, 'Bearer secret-1');
+        return upstreamPage([]);
+      }
+      if (url.pathname.endsWith('/collaborative_media')) {
+        assert.equal(token, 'Bearer collab-secret-1');
+        return upstreamPage([
+          {
+            id: 'collab-carousel',
+            media_type: 'CAROUSEL_ALBUM',
+            media_url: 'https://cdninstagram.com/collab-cover.jpg',
+            permalink: 'https://www.instagram.com/p/collab-carousel/',
+            timestamp: '2026-01-03T00:00:00Z',
+          },
+        ]);
+      }
+      if (url.hostname === 'graph.facebook.com' && url.pathname.endsWith('/children')) {
+        assert.equal(token, 'Bearer collab-secret-1');
+        return Response.json({ data: [] });
+      }
+      if (url.hostname === 'graph.instagram.com' && url.pathname.endsWith('/children')) {
+        if (token === 'Bearer collab-secret-1') return Response.json({ data: [] });
+        assert.equal(token, 'Bearer secret-1');
+        return Response.json({
+          data: [
+            {
+              id: 'collab-child',
+              media_type: 'IMAGE',
+              media_url: 'https://cdninstagram.com/collab-child.jpg',
+            },
+          ],
+        });
+      }
+      return new Response(null, { status: 404 });
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request('https://worker.test/underwater'),
+        readyEnv,
+      );
+      assert.equal(response.status, 200);
+      const body = (await response.json()) as {
+        data: Array<Record<string, unknown>>;
+      };
+      assert.deepEqual(body.data[0].children, [
+        {
+          id: 'collab-child',
+          media_type: 'IMAGE',
+          media_url: 'https://cdninstagram.com/collab-child.jpg',
+        },
+      ]);
+      assert.deepEqual(
+        calls.filter((url) => url.pathname.endsWith('/children')).map((url) => url.hostname),
+        ['graph.facebook.com', 'graph.instagram.com', 'graph.instagram.com'],
+      );
+    },
+  );
+});
+
+test('keeps valid collaborator children already included in the upstream payload', async () => {
+  const child = {
+    id: 'inline-child',
+    media_type: 'IMAGE',
+    media_url: 'https://cdninstagram.com/inline-child.jpg',
+  };
+  await withWorkerMocks(
+    async (input) => {
+      const url = requestPath(input);
+      if (url.pathname.endsWith('/media')) return upstreamPage([]);
+      if (url.pathname.endsWith('/collaborative_media')) {
+        return upstreamPage([
+          {
+            id: 'inline-collab-carousel',
+            media_type: 'CAROUSEL_ALBUM',
+            media_url: 'https://cdninstagram.com/inline-cover.jpg',
+            permalink: 'https://www.instagram.com/p/inline-collab-carousel/',
+            timestamp: '2026-01-03T00:00:00Z',
+            children: [child],
+          },
+        ]);
+      }
+      throw new Error('child fetch should not run when inline children are present');
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request('https://worker.test/underwater'),
+        readyEnv,
+      );
+      const body = (await response.json()) as {
+        data: Array<Record<string, unknown>>;
+      };
+      assert.deepEqual(body.data[0].children, [child]);
+    },
+  );
+});
+
+test('expands collaborator carousel children from the parent Graph response', async () => {
+  await withWorkerMocks(
+    async (input) => {
+      const url = requestPath(input);
+      if (url.pathname.endsWith('/media')) return upstreamPage([]);
+      if (url.pathname.endsWith('/collaborative_media')) {
+        return upstreamPage([
+          {
+            id: 'expanded-collab-carousel',
+            media_type: 'CAROUSEL_ALBUM',
+            media_url: 'https://cdninstagram.com/expanded-cover.jpg',
+            timestamp: '2026-01-03T00:00:00Z',
+          },
+        ]);
+      }
+      if (
+        url.hostname === 'graph.facebook.com' &&
+        url.pathname.endsWith('/expanded-collab-carousel')
+      ) {
+        assert.equal(url.searchParams.get('fields'), `children{${
+          'id,media_type,media_url,permalink,thumbnail_url'
+        }}`);
+        return Response.json({
+          children: {
+            data: [
+              {
+                id: 'expanded-collab-child',
+                media_type: 'IMAGE',
+                media_url: 'https://cdninstagram.com/expanded-child.jpg',
+              },
+            ],
+          },
+        });
+      }
+      throw new Error(`unexpected request: ${url.href}`);
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request('https://worker.test/underwater'),
+        readyEnv,
+      );
+      assert.equal(response.status, 200);
+      const body = (await response.json()) as {
+        data: Array<Record<string, unknown>>;
+      };
+      assert.deepEqual(body.data[0].children, [
+        {
+          id: 'expanded-collab-child',
+          media_type: 'IMAGE',
+          media_url: 'https://cdninstagram.com/expanded-child.jpg',
+        },
+      ]);
+    },
+  );
+});
+
+test('uses a dedicated Instagram-host token for collaborator children', async () => {
+  await withWorkerMocks(
+    async (input, init) => {
+      const url = requestPath(input);
+      const token = new Headers(init?.headers).get('Authorization');
+      if (url.pathname.endsWith('/media')) return upstreamPage([]);
+      if (url.pathname.endsWith('/collaborative_media')) return upstreamPage([
+        { id: 'tokenized-collab-carousel', media_type: 'CAROUSEL_ALBUM' },
+      ]);
+      if (url.hostname === 'graph.facebook.com') return Response.json({ data: [] });
+      if (url.hostname === 'graph.instagram.com' && url.pathname.endsWith('/children')) {
+        assert.equal(token, 'Bearer instagram-child-secret');
+        return Response.json({
+          data: [
+            {
+              id: 'tokenized-collab-child',
+              media_type: 'IMAGE',
+              media_url: 'https://cdninstagram.com/tokenized-child.jpg',
+            },
+          ],
+        });
+      }
+      throw new Error(`unexpected request: ${url.href}`);
+    },
+    async () => {
+      const response = await worker.fetch(new Request('https://worker.test/underwater'), {
+        ...readyEnv,
+        IG_COLLAB_CHILD_ACCESS_TOKEN_UNDERWATER: 'instagram-child-secret',
+      });
+      const body = (await response.json()) as { data: Array<Record<string, unknown>> };
+      assert.deepEqual(body.data[0].children, [
+        {
+          id: 'tokenized-collab-child',
+          media_type: 'IMAGE',
+          media_url: 'https://cdninstagram.com/tokenized-child.jpg',
+        },
+      ]);
+    },
+  );
+});
+
+test('OAuth start creates state and callback exchanges/stores only safe metadata', async () => {
+  const store = new MemoryKV();
+  const env = oauthTestEnv(store);
+  env.IG_COLLAB_USER_ID_PORTRAITS = '17841404000071984';
+  await withWorkerMocks(
+    async (input) => {
+      const url = requestPath(input);
+      if (url.hostname === 'api.instagram.com') {
+        return Response.json({ access_token: 'short-lived-token', user_id: 17841404000071984 });
+      }
+      if (url.hostname === 'graph.instagram.com' && url.pathname.endsWith('/access_token')) {
+        assert.equal(url.searchParams.get('grant_type'), 'ig_exchange_token');
+        assert.equal(url.searchParams.get('client_secret'), 'test-app-secret');
+        assert.equal(url.searchParams.get('access_token'), 'short-lived-token');
+        return Response.json({ access_token: 'long-lived-token', expires_in: 5000 });
+      }
+      throw new Error(`unexpected OAuth request: ${url.href}`);
+    },
+    async () => {
+      const start = await worker.fetch(
+        new Request('https://worker.test/oauth/instagram/start?side=portraits'),
+        env,
+      );
+      assert.equal(start.status, 302);
+      const location = start.headers.get('Location');
+      assert.ok(location);
+      const authorizeUrl = new URL(location);
+      assert.equal(authorizeUrl.origin, 'https://www.instagram.com');
+      assert.equal(authorizeUrl.pathname, '/oauth/authorize');
+      assert.equal(authorizeUrl.searchParams.get('client_id'), 'test-app-id');
+      assert.equal(
+        authorizeUrl.searchParams.get('redirect_uri'),
+        'https://ig-proxy.example/oauth/instagram/callback',
+      );
+      assert.equal(authorizeUrl.searchParams.get('scope'), 'instagram_business_basic');
+      const state = authorizeUrl.searchParams.get('state');
+      assert.ok(state);
+      assert.equal(await store.get(`ig-oauth-state:${state}`), 'portraits');
+
+      const callbackUrl = new URL('https://worker.test/oauth/instagram/callback');
+      callbackUrl.searchParams.set('code', 'one-time-code');
+      callbackUrl.searchParams.set('state', state);
+      const callback = await worker.fetch(new Request(callbackUrl), env);
+      assert.equal(callback.status, 200);
+      const body = (await callback.json()) as Record<string, unknown>;
+      assert.deepEqual(body, {
+        ok: true,
+        side: 'portraits',
+        instagramUserId: '17841404000071984',
+        expiresIn: 5000,
+      });
+      const responseText = JSON.stringify(body);
+      assert.equal(responseText.includes('short-lived-token'), false);
+      assert.equal(responseText.includes('long-lived-token'), false);
+      assert.equal(responseText.includes('test-app-secret'), false);
+      assert.equal(await store.get(`ig-oauth-state:${state}`), null);
+      assert.equal(await store.get('ig-collab-child-token:portraits'), 'long-lived-token');
+    },
+  );
+});
+
+test('OAuth callback rejects missing state and a mismatched Instagram account', async () => {
+  const store = new MemoryKV();
+  const env = oauthTestEnv(store);
+  let upstreamCalls = 0;
+  await withWorkerMocks(
+    async (input) => {
+      upstreamCalls += 1;
+      const url = requestPath(input);
+      if (url.hostname === 'api.instagram.com') {
+        return Response.json({ access_token: 'short-lived-token', user_id: 'not-portrait' });
+      }
+      if (url.hostname === 'graph.instagram.com') {
+        return Response.json({ access_token: 'long-lived-token', user_id: 'not-portrait' });
+      }
+      throw new Error(`unexpected OAuth request: ${url.href}`);
+    },
+    async () => {
+      const missingState = await worker.fetch(
+        new Request('https://worker.test/oauth/instagram/callback?code=one-time-code'),
+        env,
+      );
+      assert.equal(missingState.status, 400);
+      assert.equal(upstreamCalls, 0);
+
+      await store.put('ig-oauth-state:mismatch', 'portraits');
+      const mismatch = await worker.fetch(
+        new Request(
+          'https://worker.test/oauth/instagram/callback?code=one-time-code&state=mismatch',
+        ),
+        env,
+      );
+      assert.equal(mismatch.status, 403);
+      assert.equal(await store.get('ig-collab-child-token:portraits'), null);
+      assert.equal(await store.get('ig-oauth-state:mismatch'), null);
+      assert.equal(upstreamCalls, 2);
+    },
+  );
+});
+
+test('uses the KV collaborator token for parent media and carousel children', async () => {
+  const store = new MemoryKV();
+  await store.put('ig-collab-child-token:underwater', 'kv-child-secret');
+  const env = {
+    ...readyEnv,
+    IG_COLLAB_CHILD_ACCESS_TOKEN_UNDERWATER: 'stale-static-child-secret',
+    IG_TOKEN_STORE: store as unknown as KVNamespace,
+  };
+  await withWorkerMocks(
+    async (input, init) => {
+      const url = requestPath(input);
+      const token = new Headers(init?.headers).get('Authorization');
+      if (url.pathname.endsWith('/media')) return upstreamPage([]);
+      if (url.pathname.endsWith('/collaborative_media')) {
+        assert.equal(url.hostname, 'graph.instagram.com');
+        assert.equal(token, 'Bearer kv-child-secret');
+        return upstreamPage([
+          { id: 'kv-collab-carousel', media_type: 'CAROUSEL_ALBUM' },
+        ]);
+      }
+      if (url.hostname === 'graph.facebook.com') return Response.json({ data: [] });
+      if (url.hostname === 'graph.instagram.com' && url.pathname.endsWith('/children')) {
+        assert.equal(token, 'Bearer kv-child-secret');
+        return Response.json({
+          data: [{
+            id: 'kv-collab-child',
+            media_type: 'IMAGE',
+            media_url: 'https://cdninstagram.com/kv-child.jpg',
+          }],
+        });
+      }
+      throw new Error(`unexpected request: ${url.href}`);
+    },
+    async () => {
+      const response = await worker.fetch(new Request('https://worker.test/underwater'), env);
+      const body = (await response.json()) as { data: Array<Record<string, unknown>> };
+      assert.deepEqual(body.data[0].children, [{
+        id: 'kv-collab-child',
+        media_type: 'IMAGE',
+        media_url: 'https://cdninstagram.com/kv-child.jpg',
+      }]);
+    },
+  );
+});
+
 test('collaborative failures retry once, recover, and then stop after two consecutive failures', async () => {
   let collaborativeAttempts = 0;
   await withWorkerMocks(
@@ -455,6 +828,10 @@ test('collaborative failures retry once, recover, and then stop after two consec
       const url = requestPath(input);
       if (url.pathname.endsWith('/media')) {
         return upstreamPage([{ id: 'owned' }]);
+      }
+
+      if (url.searchParams.get('fields')?.includes('children{')) {
+        return new Response(null, { status: 400 });
       }
 
       collaborativeAttempts += 1;

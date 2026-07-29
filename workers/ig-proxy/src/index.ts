@@ -39,6 +39,9 @@
  *                       wrangler secret put IG_COLLAB_USER_ID_UNDERWATER
  *                       wrangler secret put IG_COLLAB_ACCESS_TOKEN_PORTRAITS
  *                       wrangler secret put IG_COLLAB_USER_ID_PORTRAITS
+ *                       wrangler secret put IG_COLLAB_CHILD_ACCESS_TOKEN_UNDERWATER
+ *                       wrangler secret put IG_COLLAB_CHILD_ACCESS_TOKEN_PORTRAITS
+ *                       wrangler secret put IG_INSTAGRAM_APP_SECRET
  *  5. Deploy:           wrangler deploy
  *  6. Set NEXT_PUBLIC_IG_PROXY_URL in your Next.js env to the
  *     deployed worker URL (e.g. https://ig-proxy.<you>.workers.dev)
@@ -91,8 +94,18 @@ export interface Env {
   IG_ACCESS_TOKEN_PORTRAITS: string;
   IG_COLLAB_USER_ID_UNDERWATER?: string;
   IG_COLLAB_ACCESS_TOKEN_UNDERWATER?: string;
+  IG_COLLAB_CHILD_ACCESS_TOKEN_UNDERWATER?: string;
   IG_COLLAB_USER_ID_PORTRAITS?: string;
   IG_COLLAB_ACCESS_TOKEN_PORTRAITS?: string;
+  IG_COLLAB_CHILD_ACCESS_TOKEN_PORTRAITS?: string;
+  /** Instagram Business Login application id (non-secret). */
+  IG_INSTAGRAM_APP_ID?: string;
+  /** Instagram Business Login application secret. Keep this Worker-only. */
+  IG_INSTAGRAM_APP_SECRET?: string;
+  /** Exact redirect URI registered in the Instagram app. */
+  IG_INSTAGRAM_REDIRECT_URI?: string;
+  /** Private KV store for OAuth state and exchanged collaborator tokens. */
+  IG_TOKEN_STORE?: KVNamespace;
   /**
    * Comma-separated HTTPS allowlist. Each entry must be an HTTPS URL
    * with no credentials, no path beyond "/", no query, and no fragment.
@@ -105,6 +118,12 @@ export interface Env {
 
 const CACHE_TTL_SECONDS = 3600;
 export const DEFAULT_GRAPH_API_VERSION = 'v23.0';
+const INSTAGRAM_AUTHORIZE_URL = 'https://www.instagram.com/oauth/authorize';
+const INSTAGRAM_CODE_EXCHANGE_URL = 'https://api.instagram.com/oauth/access_token';
+const INSTAGRAM_LONG_LIVED_EXCHANGE_URL = 'https://graph.instagram.com/access_token';
+const OAUTH_STATE_TTL_SECONDS = 600;
+const OAUTH_STATE_PREFIX = 'ig-oauth-state:';
+const COLLAB_TOKEN_PREFIX = 'ig-collab-child-token:';
 
 const CORS = (origin: string) => ({
   'Access-Control-Allow-Origin': origin,
@@ -146,6 +165,7 @@ interface ApiCredentials {
 interface FeedRoute {
   owned: ApiCredentials;
   collaborative: ApiCredentials;
+  collaborativeChildAccessToken?: string;
 }
 
 function routeFor(path: string, env: Env): FeedRoute | null {
@@ -156,6 +176,7 @@ function routeFor(path: string, env: Env): FeedRoute | null {
         userId: env.IG_COLLAB_USER_ID_UNDERWATER ?? '',
         accessToken: env.IG_COLLAB_ACCESS_TOKEN_UNDERWATER ?? '',
       },
+      collaborativeChildAccessToken: env.IG_COLLAB_CHILD_ACCESS_TOKEN_UNDERWATER,
     };
   }
   if (path === 'portraits') {
@@ -165,9 +186,224 @@ function routeFor(path: string, env: Env): FeedRoute | null {
         userId: env.IG_COLLAB_USER_ID_PORTRAITS ?? '',
         accessToken: env.IG_COLLAB_ACCESS_TOKEN_PORTRAITS ?? '',
       },
+      collaborativeChildAccessToken: env.IG_COLLAB_CHILD_ACCESS_TOKEN_PORTRAITS,
     };
   }
   return null;
+}
+
+type FeedSide = 'underwater' | 'portraits';
+
+function isFeedSide(value: string | null): value is FeedSide {
+  return value === 'underwater' || value === 'portraits';
+}
+
+function collaboratorUserIdFor(side: FeedSide, env: Env): string {
+  return side === 'underwater'
+    ? env.IG_COLLAB_USER_ID_UNDERWATER ?? ''
+    : env.IG_COLLAB_USER_ID_PORTRAITS ?? '';
+}
+
+function collaboratorTokenKey(side: FeedSide): string {
+  return `${COLLAB_TOKEN_PREFIX}${side}`;
+}
+
+function oauthStateKey(state: string): string {
+  return `${OAUTH_STATE_PREFIX}${state}`;
+}
+
+interface InstagramTokenExchange {
+  accessToken: string;
+  userId: string;
+  expiresIn?: number;
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+async function parseUpstreamJson(response: Response): Promise<Record<string, unknown> | null> {
+  try {
+    return parseJsonObject(await response.json());
+  } catch {
+    return null;
+  }
+}
+
+function validTokenExchangePayload(
+  payload: Record<string, unknown> | null,
+  fallbackUserId?: string,
+): InstagramTokenExchange | null {
+  if (!payload) return null;
+  const accessToken = payload.access_token;
+  const rawUserId = payload.user_id;
+  const userId =
+    typeof rawUserId === 'string'
+      ? rawUserId
+      : typeof rawUserId === 'number' && Number.isFinite(rawUserId) && Number.isInteger(rawUserId)
+        ? String(rawUserId)
+        : null;
+  if (typeof accessToken !== 'string' || accessToken.length === 0) return null;
+  const resolvedUserId = userId ?? fallbackUserId;
+  if (!resolvedUserId) return null;
+  const expiresIn = payload.expires_in;
+  return {
+    accessToken,
+    userId: resolvedUserId,
+    ...(typeof expiresIn === 'number' && Number.isFinite(expiresIn) && expiresIn > 0
+      ? { expiresIn }
+      : {}),
+  };
+}
+
+function safeUpstreamError(payload: Record<string, unknown> | null): Record<string, unknown> {
+  if (!payload) return {};
+  const nested = parseJsonObject(payload.error);
+  const source = nested ?? payload;
+  const result: Record<string, unknown> = {};
+  for (const key of ['type', 'code', 'error_subcode']) {
+    const value = source[key];
+    if (typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))) {
+      result[key] = value;
+    }
+  }
+  const message = source.message ?? source.error_message ?? payload.error_description;
+  if (typeof message === 'string' && message.length > 0) {
+    result.message = message.slice(0, 240);
+  }
+  return result;
+}
+
+async function exchangeInstagramAuthorizationCode(
+  code: string,
+  env: Env,
+): Promise<InstagramTokenExchange | null> {
+  if (!env.IG_INSTAGRAM_APP_ID || !env.IG_INSTAGRAM_APP_SECRET || !env.IG_INSTAGRAM_REDIRECT_URI) {
+    return null;
+  }
+
+  const form = new FormData();
+  form.set('client_id', env.IG_INSTAGRAM_APP_ID);
+  form.set('client_secret', env.IG_INSTAGRAM_APP_SECRET);
+  form.set('grant_type', 'authorization_code');
+  form.set('redirect_uri', env.IG_INSTAGRAM_REDIRECT_URI);
+  form.set('code', code);
+
+  try {
+    const shortLivedResponse = await fetch(INSTAGRAM_CODE_EXCHANGE_URL, {
+      method: 'POST',
+      body: form,
+    });
+    const shortLivedPayload = await parseUpstreamJson(shortLivedResponse);
+    if (!shortLivedResponse.ok) {
+      console.error(
+        'Instagram short-lived token exchange rejected',
+        shortLivedResponse.status,
+        safeUpstreamError(shortLivedPayload),
+      );
+      return null;
+    }
+    const shortLived = validTokenExchangePayload(shortLivedPayload);
+    if (!shortLived) {
+      console.error(
+        'Instagram short-lived token exchange payload invalid',
+        safeUpstreamError(shortLivedPayload),
+      );
+      return null;
+    }
+
+    const longLivedUrl = new URL(INSTAGRAM_LONG_LIVED_EXCHANGE_URL);
+    longLivedUrl.search = new URLSearchParams({
+      grant_type: 'ig_exchange_token',
+      client_secret: env.IG_INSTAGRAM_APP_SECRET,
+      access_token: shortLived.accessToken,
+    }).toString();
+    const longLivedResponse = await fetch(longLivedUrl, { method: 'GET' });
+    const longLivedPayload = await parseUpstreamJson(longLivedResponse);
+    if (!longLivedResponse.ok) {
+      console.error(
+        'Instagram long-lived token exchange rejected',
+        longLivedResponse.status,
+        safeUpstreamError(longLivedPayload),
+      );
+      return null;
+    }
+    const longLived = validTokenExchangePayload(longLivedPayload, shortLived.userId);
+    if (!longLived) {
+      console.error(
+        'Instagram long-lived token exchange payload invalid',
+        safeUpstreamError(longLivedPayload),
+      );
+      return null;
+    }
+    if (longLived.userId !== shortLived.userId) {
+      console.error('Instagram token exchange returned mismatched account ids');
+      return null;
+    }
+    return longLived;
+  } catch (error) {
+    console.error(
+      'Instagram token exchange request failed',
+      error instanceof Error ? error.name : 'UnknownError',
+    );
+    return null;
+  }
+}
+
+function oauthConfigReady(env: Env): boolean {
+  return Boolean(
+    env.IG_TOKEN_STORE &&
+      env.IG_INSTAGRAM_APP_ID &&
+      env.IG_INSTAGRAM_APP_SECRET &&
+      env.IG_INSTAGRAM_REDIRECT_URI,
+  );
+}
+
+function tokenFingerprint(token: string | undefined): string {
+  if (!token) return 'none';
+  // This is only a cache namespace discriminator; it is intentionally not
+  // reversible and never contains token material.
+  let hash = 2166136261;
+  for (let index = 0; index < token.length; index += 1) {
+    hash ^= token.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${token.length.toString(36)}-${(hash >>> 0).toString(36)}`;
+}
+
+interface ResolvedCollaborativeToken {
+  accessToken: string | undefined;
+  graphApiHost: 'graph.facebook.com' | 'graph.instagram.com';
+  fromInstagramLogin: boolean;
+}
+
+async function resolveCollaborativeToken(
+  side: FeedSide,
+  env: Env,
+  fallback: string | undefined,
+): Promise<ResolvedCollaborativeToken> {
+  if (!env.IG_TOKEN_STORE) {
+    return { accessToken: fallback, graphApiHost: 'graph.facebook.com', fromInstagramLogin: false };
+  }
+  try {
+    const stored = await env.IG_TOKEN_STORE.get(collaboratorTokenKey(side));
+    // Instagram Business Login tokens are valid on graph.instagram.com and
+    // replace the legacy Facebook Graph token for the entire collaborator
+    // request, not only for carousel children.
+    if (stored) {
+      return { accessToken: stored, graphApiHost: 'graph.instagram.com', fromInstagramLogin: true };
+    }
+    return { accessToken: fallback, graphApiHost: 'graph.facebook.com', fromInstagramLogin: false };
+  } catch (error) {
+    console.error(
+      'Instagram collaborator token lookup failed',
+      side,
+      error instanceof Error ? error.name : 'UnknownError',
+    );
+    return { accessToken: fallback, graphApiHost: 'graph.facebook.com', fromInstagramLogin: false };
+  }
 }
 
 const MEDIA_FIELDS = 'id,media_type,media_url,permalink,thumbnail_url,caption,timestamp';
@@ -177,6 +413,7 @@ const MEDIA_FIELDS = 'id,media_type,media_url,permalink,thumbnail_url,caption,ti
 // parent — and their `permalink` is optional (IG omits it on some
 // children), so we don't require it.
 const CHILDREN_FIELDS = 'id,media_type,media_url,permalink,thumbnail_url';
+const COLLABORATIVE_MEDIA_FIELDS = `${MEDIA_FIELDS},children{${CHILDREN_FIELDS}}`;
 
 // ──────────────────────────────────────────────────────────────────
 // Carousel child normalization
@@ -237,7 +474,11 @@ function isInstagramHttpsUrl(value: string): boolean {
  */
 export function normalizeCarouselChildren(payload: unknown): unknown[] {
   if (!payload || typeof payload !== 'object') return [];
-  const data = (payload as { data?: unknown }).data;
+  const body = payload as { data?: unknown; children?: { data?: unknown } };
+  // The media edge returns `{ data: [...] }`, while field expansion on a
+  // parent returns `{ children: { data: [...] } }`. Accept both shapes so
+  // collaborator media can use whichever form its Graph endpoint supports.
+  const data = Array.isArray(body.data) ? body.data : body.children?.data;
   if (!Array.isArray(data)) return [];
   return data.filter((candidate): candidate is Record<string, unknown> => {
     if (!candidate || typeof candidate !== 'object') return false;
@@ -276,25 +517,66 @@ async function fetchCarouselChildren(
   parentId: string,
   accessToken: string,
   graphApiHost = 'graph.instagram.com',
+  fallback?:
+    | { accessToken: string; graphApiHost: string }
+    | Array<{ accessToken: string; graphApiHost: string }>,
 ): Promise<unknown[]> {
-  const url =
-    `https://${graphApiHost}/${graphApiVersion}/${encodeURIComponent(parentId)}/children` +
-    `?fields=${CHILDREN_FIELDS}&limit=10`;
-  try {
-    const response = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${accessToken}` },
-    });
-    if (!response.ok) return [];
-    const payload = await response.json();
-    return normalizeCarouselChildren(payload);
-  } catch (error) {
-    console.error(
-      'Instagram carousel children request failed',
-      parentId,
-      error instanceof Error ? error.name : 'UnknownError',
+  const sources = [
+    { accessToken, graphApiHost },
+    ...(fallback ? (Array.isArray(fallback) ? fallback : [fallback]) : []),
+  ];
+
+  // Collaborative media may not expose the `/children` edge on the
+  // Facebook Graph host, while the parent field expansion still returns the
+  // complete carousel. Try that form once before the edge fallbacks.
+  if (fallback) {
+    const expandedUrl = new URL(
+      `https://${graphApiHost}/${graphApiVersion}/${encodeURIComponent(parentId)}`,
     );
-    return [];
+    expandedUrl.searchParams.set('fields', `children{${CHILDREN_FIELDS}}`);
+    try {
+      const response = await fetch(expandedUrl, {
+        headers: { 'Authorization': `Bearer ${accessToken}` },
+      });
+      if (response.ok) {
+        const children = normalizeCarouselChildren(await response.json());
+        if (children.length > 0) return children;
+      }
+    } catch (error) {
+      console.error(
+        'Instagram expanded carousel request failed',
+        parentId,
+        graphApiHost,
+        error instanceof Error ? error.name : 'UnknownError',
+      );
+    }
   }
+
+  const attempts = sources;
+
+  for (const attempt of attempts) {
+    const encodedId = encodeURIComponent(parentId);
+    const url =
+      `https://${attempt.graphApiHost}/${graphApiVersion}/${encodedId}/children` +
+      `?fields=${CHILDREN_FIELDS}&limit=10`;
+    try {
+      const response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${attempt.accessToken}` },
+      });
+      if (!response.ok) continue;
+      const children = normalizeCarouselChildren(await response.json());
+      if (children.length > 0) return children;
+    } catch (error) {
+      console.error(
+        'Instagram carousel children request failed',
+        parentId,
+        attempt.graphApiHost,
+        error instanceof Error ? error.name : 'UnknownError',
+      );
+    }
+  }
+
+  return [];
 }
 
 /**
@@ -309,13 +591,26 @@ export async function inlineCarouselChildren(
   accessToken: string,
   posts: Record<string, unknown>[],
   graphApiHost = 'graph.instagram.com',
+  fallback?:
+    | { accessToken: string; graphApiHost: string }
+    | Array<{ accessToken: string; graphApiHost: string }>,
 ): Promise<Record<string, unknown>[]> {
   return Promise.all(
     posts.map(async (post) => {
       if (post.media_type !== 'CAROUSEL_ALBUM') return post;
       const id = post.id;
       if (typeof id !== 'string') return post;
-      const children = await fetchCarouselChildren(graphApiVersion, id, accessToken, graphApiHost);
+      const inlineChildren = Array.isArray(post.children)
+        ? normalizeCarouselChildren({ data: post.children })
+        : normalizeCarouselChildren(post.children);
+      if (inlineChildren.length > 0) return { ...post, children: inlineChildren };
+      const children = await fetchCarouselChildren(
+        graphApiVersion,
+        id,
+        accessToken,
+        graphApiHost,
+        fallback,
+      );
       return children.length > 0 ? { ...post, children } : post;
     }),
   );
@@ -381,7 +676,7 @@ export function resolveGraphApiVersion(env: Env): string | null {
 // Returns null when the value is empty, too long, or malformed.
 const MAX_CURSOR_LENGTH = 256;
 const MAX_CLIENT_CURSOR_LENGTH = 1024;
-const CACHE_SCHEMA_VERSION = 'collaborative-v3';
+const CACHE_SCHEMA_VERSION = 'collaborative-v10';
 
 interface SourceCursorState {
   after: string | null;
@@ -465,12 +760,20 @@ export function buildCacheKey(
   userId: string,
   graphApiVersion: string,
   cursor?: string | null,
+  childTokenFingerprint = 'none',
 ): Request {
   // Use a fixed marker when no cursor is provided so the first-page cache
   // key is stable regardless of how the URL was constructed. Encode every
   // segment because valid opaque cursors may contain reserved URL characters.
   const cursorSegment = cursor ?? '_';
-  const path = [CACHE_SCHEMA_VERSION, graphApiVersion, userId, side, cursorSegment]
+  const path = [
+    CACHE_SCHEMA_VERSION,
+    graphApiVersion,
+    userId,
+    side,
+    childTokenFingerprint,
+    cursorSegment,
+  ]
     .map(encodeURIComponent)
     .join('/');
   return new Request(`https://ig-cache.local/${path}`, { method: 'GET' });
@@ -505,12 +808,13 @@ function buildMediaUrl(
   endpoint: 'media' | 'collaborative_media',
   after: string | null,
   graphApiHost = 'graph.instagram.com',
+  fields = MEDIA_FIELDS,
 ): URL {
   const url = new URL(
     `https://${graphApiHost}/${graphApiVersion}/${encodeURIComponent(userId)}/${endpoint}`,
   );
   url.search = new URLSearchParams({
-    fields: MEDIA_FIELDS,
+    fields,
     limit: '9',
     ...(after ? { after } : {}),
   }).toString();
@@ -559,6 +863,40 @@ function stateFromResult(
     : { after: null, exhausted: true, failures: 0 };
 }
 
+async function fetchCollaborativeMediaPage(
+  graphApiVersion: string,
+  userId: string,
+  accessToken: string,
+  after: string | null,
+  graphApiHost: 'graph.facebook.com' | 'graph.instagram.com' = 'graph.facebook.com',
+): Promise<MediaPageResult> {
+  const expanded = await fetchMediaPage(
+    buildMediaUrl(
+      graphApiVersion,
+      userId,
+      'collaborative_media',
+      after,
+      graphApiHost,
+      COLLABORATIVE_MEDIA_FIELDS,
+    ),
+    accessToken,
+  );
+  if (expanded.outcome !== 'failure') return expanded;
+
+  // Keep the feed available if a Graph API version rejects nested fields;
+  // child expansion will still be attempted per carousel below.
+  return fetchMediaPage(
+    buildMediaUrl(
+      graphApiVersion,
+      userId,
+      'collaborative_media',
+      after,
+      graphApiHost,
+    ),
+    accessToken,
+  );
+}
+
 function mergeMediaPosts(
   mediaPosts: Record<string, unknown>[],
   collaborativePosts: Record<string, unknown>[],
@@ -591,6 +929,117 @@ function responseBodyFromCache(payload: unknown): Record<string, unknown> {
   if (!paging || typeof paging !== 'object' || Array.isArray(paging)) return { data };
   const next = (paging as Record<string, unknown>).next;
   return decodeCompositeCursor(next) ? { data, paging: { next } } : { data };
+}
+
+async function handleInstagramOAuthStart(
+  env: Env,
+  requestedSide: string | null,
+  origin: string,
+): Promise<Response> {
+  if (!oauthConfigReady(env)) {
+    return errorResponse('Instagram authorization is not configured.', origin, 503);
+  }
+  if (!isFeedSide(requestedSide) || !collaboratorUserIdFor(requestedSide, env)) {
+    return errorResponse('Invalid Instagram authorization target.', origin, 400);
+  }
+  const side = requestedSide;
+
+  const state = crypto.randomUUID();
+  try {
+    await env.IG_TOKEN_STORE!.put(oauthStateKey(state), side, {
+      expirationTtl: OAUTH_STATE_TTL_SECONDS,
+    });
+  } catch (error) {
+    console.error(
+      'Instagram OAuth state storage failed',
+      error instanceof Error ? error.name : 'UnknownError',
+    );
+    return errorResponse('Instagram authorization is temporarily unavailable.', origin, 503);
+  }
+
+  const authorizeUrl = new URL(INSTAGRAM_AUTHORIZE_URL);
+  authorizeUrl.search = new URLSearchParams({
+    force_reauth: 'true',
+    client_id: env.IG_INSTAGRAM_APP_ID!,
+    redirect_uri: env.IG_INSTAGRAM_REDIRECT_URI!,
+    response_type: 'code',
+    scope: 'instagram_business_basic',
+    state,
+  }).toString();
+  return new Response(null, {
+    status: 302,
+    headers: {
+      ...CORS(origin),
+      Location: authorizeUrl.toString(),
+      'Cache-Control': 'no-store',
+    },
+  });
+}
+
+async function handleInstagramOAuthCallback(
+  requestUrl: URL,
+  env: Env,
+  origin: string,
+): Promise<Response> {
+  if (!oauthConfigReady(env)) {
+    return errorResponse('Instagram authorization is not configured.', origin, 503);
+  }
+
+  const code = requestUrl.searchParams.get('code');
+  const state = requestUrl.searchParams.get('state');
+  if (!code || !state || code.length > 4096 || state.length > 256) {
+    return errorResponse('Instagram authorization response is incomplete.', origin, 400);
+  }
+
+  let storedSide: string | null = null;
+  try {
+    storedSide = await env.IG_TOKEN_STORE!.get(oauthStateKey(state));
+    await env.IG_TOKEN_STORE!.delete(oauthStateKey(state));
+  } catch (error) {
+    console.error(
+      'Instagram OAuth state lookup failed',
+      error instanceof Error ? error.name : 'UnknownError',
+    );
+    return errorResponse('Instagram authorization is temporarily unavailable.', origin, 503);
+  }
+  if (!isFeedSide(storedSide)) {
+    return errorResponse('Instagram authorization state is invalid or expired.', origin, 400);
+  }
+
+  const exchanged = await exchangeInstagramAuthorizationCode(code, env);
+  if (!exchanged) {
+    return errorResponse('Instagram authorization could not be completed.', origin, 502);
+  }
+  if (exchanged.userId !== collaboratorUserIdFor(storedSide, env)) {
+    return errorResponse('Instagram authorization account does not match this feed.', origin, 403);
+  }
+
+  try {
+    const options =
+      exchanged.expiresIn && exchanged.expiresIn >= 60
+        ? { expirationTtl: Math.floor(exchanged.expiresIn) }
+        : undefined;
+    await env.IG_TOKEN_STORE!.put(collaboratorTokenKey(storedSide), exchanged.accessToken, options);
+  } catch (error) {
+    console.error(
+      'Instagram collaborator token storage failed',
+      storedSide,
+      error instanceof Error ? error.name : 'UnknownError',
+    );
+    return errorResponse('Instagram authorization is temporarily unavailable.', origin, 503);
+  }
+
+  return jsonResponse(
+    {
+      ok: true,
+      side: storedSide,
+      instagramUserId: exchanged.userId,
+      ...(exchanged.expiresIn ? { expiresIn: exchanged.expiresIn } : {}),
+    },
+    origin,
+    200,
+    'no-store',
+  );
 }
 
 export default {
@@ -634,6 +1083,12 @@ export default {
 
     // Health check
     const url = new URL(request.url);
+    if (url.pathname === '/oauth/instagram/start') {
+      return handleInstagramOAuthStart(env, url.searchParams.get('side'), effectiveOrigin);
+    }
+    if (url.pathname === '/oauth/instagram/callback') {
+      return handleInstagramOAuthCallback(url, env, effectiveOrigin);
+    }
     if (url.pathname === '/' || url.pathname === '/health') {
       const ready = Boolean(
         env.IG_USER_ID_UNDERWATER &&
@@ -679,7 +1134,19 @@ export default {
       pagination = decoded;
     }
 
-    const cacheKey = buildCacheKey(side, route.owned.userId, graphApiVersion, rawCursor);
+    const feedSide = side as FeedSide;
+    const collaborativeToken = await resolveCollaborativeToken(
+      feedSide,
+      env,
+      route.collaborative.accessToken,
+    );
+    const cacheKey = buildCacheKey(
+      side,
+      route.owned.userId,
+      graphApiVersion,
+      rawCursor,
+      tokenFingerprint(collaborativeToken.accessToken),
+    );
 
     try {
       const cache = caches.default;
@@ -704,18 +1171,15 @@ export default {
             ),
         pagination.collaborativeMedia.exhausted
           ? Promise.resolve(skipped)
-          : !route.collaborative.userId || !route.collaborative.accessToken
+          : !route.collaborative.userId || !collaborativeToken.accessToken
             ? Promise.resolve({ outcome: 'success', payload: { data: [] } } as MediaPageResult)
-          : fetchMediaPage(
-              buildMediaUrl(
+            : fetchCollaborativeMediaPage(
                 graphApiVersion,
                 route.collaborative.userId,
-                'collaborative_media',
+                collaborativeToken.accessToken,
                 pagination.collaborativeMedia.after,
-                'graph.facebook.com',
+                collaborativeToken.graphApiHost,
               ),
-              route.collaborative.accessToken,
-            ),
       ]);
 
       if (mediaResult.outcome === 'failure') {
@@ -742,9 +1206,21 @@ export default {
       );
       const collaborativePosts = await inlineCarouselChildren(
         graphApiVersion,
-        route.collaborative.accessToken,
+        collaborativeToken.accessToken ?? '',
         postsFromResult(collaborativeResult),
-        'graph.facebook.com',
+        collaborativeToken.graphApiHost,
+        collaborativeToken.fromInstagramLogin
+          ? [
+              { accessToken: route.collaborative.accessToken, graphApiHost: 'graph.facebook.com' },
+              { accessToken: route.owned.accessToken, graphApiHost: 'graph.instagram.com' },
+            ]
+          : [
+              {
+                accessToken: route.collaborativeChildAccessToken ?? route.collaborative.accessToken,
+                graphApiHost: 'graph.instagram.com',
+              },
+              { accessToken: route.owned.accessToken, graphApiHost: 'graph.instagram.com' },
+            ],
       );
       const augmentedPosts = mergeMediaPosts(ownedPosts, collaborativePosts);
       const nextPagination: CompositeCursor = {
