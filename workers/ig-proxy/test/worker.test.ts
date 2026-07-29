@@ -890,6 +890,112 @@ test('collaborative failures retry once, recover, and then stop after two consec
   );
 });
 
+test('falls back to the static graph.facebook.com collaborator credential when the KV token fails', async () => {
+  const store = new MemoryKV();
+  await store.put('ig-collab-child-token:underwater', 'kv-collab-secret');
+  const env = {
+    ...readyEnv,
+    IG_TOKEN_STORE: store as unknown as KVNamespace,
+  };
+  let facebookCollaborativeCalls = 0;
+
+  await withWorkerMocks(
+    async (input, init) => {
+      const url = requestPath(input);
+      const token = new Headers(init?.headers).get('Authorization');
+
+      if (
+        url.hostname === 'graph.instagram.com' &&
+        url.pathname.endsWith('/media')
+      ) {
+        assert.equal(token, 'Bearer secret-1');
+        return upstreamPage([
+          {
+            id: 'owned-post',
+            media_type: 'IMAGE',
+            timestamp: '2026-01-02T00:00:00Z',
+          },
+        ]);
+      }
+
+      // Primary collaborative call uses the KV-stored Instagram-host token.
+      // Simulate that credential failing on graph.instagram.com.
+      if (
+        url.hostname === 'graph.instagram.com' &&
+        url.pathname.endsWith('/collaborative_media')
+      ) {
+        assert.equal(token, 'Bearer kv-collab-secret');
+        return new Response(null, { status: 503 });
+      }
+
+      // Fallback collaborative call uses the static configured token on
+      // graph.facebook.com. Returns the collaborator post plus a duplicate
+      // of the owned post so dedup + merge ordering can both be checked.
+      if (
+        url.hostname === 'graph.facebook.com' &&
+        url.pathname.endsWith('/collaborative_media')
+      ) {
+        facebookCollaborativeCalls += 1;
+        assert.equal(token, 'Bearer collab-secret-1');
+        return upstreamPage([
+          {
+            id: 'collab-post',
+            media_type: 'IMAGE',
+            timestamp: '2026-01-03T00:00:00Z',
+          },
+          {
+            id: 'owned-post',
+            media_type: 'IMAGE',
+            timestamp: '2026-01-02T00:00:00Z',
+          },
+        ]);
+      }
+
+      throw new Error(`unexpected request: ${url.href}`);
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request('https://worker.test/underwater'),
+        env,
+      );
+      const responseText = await response.text();
+
+      assert.equal(response.status, 200);
+      assert.equal(
+        facebookCollaborativeCalls > 0,
+        true,
+        'expected the fallback graph.facebook.com collaborator request to be issued',
+      );
+
+      const body = JSON.parse(responseText) as {
+        data: Array<{ id: string }>;
+      };
+      const ids = body.data.map((post) => post.id);
+      assert.ok(
+        ids.includes('collab-post'),
+        `expected collaborator post in merged response, got: ${JSON.stringify(ids)}`,
+      );
+      assert.equal(
+        ids.filter((id) => id === 'owned-post').length,
+        1,
+        `expected the duplicate owned id to be deduped, got: ${JSON.stringify(ids)}`,
+      );
+      assert.deepEqual(ids, ['collab-post', 'owned-post']);
+
+      assert.equal(
+        responseText.includes('kv-collab-secret'),
+        false,
+        'response body must not leak the KV collaborator token',
+      );
+      assert.equal(
+        responseText.includes('collab-secret-1'),
+        false,
+        'response body must not leak the static configured collaborator token',
+      );
+    },
+  );
+});
+
 test('malformed upstream data falls back for collaborative media and fails owned media', async () => {
   await withWorkerMocks(
     async (input) => {
