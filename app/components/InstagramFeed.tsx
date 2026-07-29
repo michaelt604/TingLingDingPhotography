@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type PointerEvent, type RefObject } from 'react';
 import Image from 'next/image';
 import { mergeInstagramPosts, normalizeInstagramPosts, type IGPost } from './instagramData';
+import { getInstagramEmbedUrl } from './instagramEmbed';
 import { getInstagramFeedDisplayState } from './instagramFeedState';
 import styles from './InstagramFeed.module.css';
 
@@ -414,6 +415,7 @@ function PostTile({ post, handle }: PostTileProps) {
   const isCarousel = post.media_type === 'CAROUSEL_ALBUM';
   const children = isCarousel && Array.isArray(post.children) ? post.children : null;
   const slides = children && children.length > 0 ? children : null;
+  const embedUrl = isCarousel && slides === null ? getInstagramEmbedUrl(post.permalink) : null;
   const label = post.caption ? post.caption.replace(/\s+/g, ' ').trim().slice(0, 100) : `Instagram post by @${handle}`;
   // Shorter, visible-on-hover caption. Only render when the post has
   // a real caption — the fallback `label` is built for the aria-label
@@ -517,7 +519,7 @@ function PostTile({ post, handle }: PostTileProps) {
       ) : null}
       {caption ? <p className={styles.tileCaption} aria-hidden="true">{caption}</p> : null}
       {canPrev || canNext ? <CarouselControls canPrev={canPrev} canNext={canNext} safeIndex={safeIndex} totalSlides={totalSlides} onPrev={goPrev} onNext={goNext} /> : null}
-      {lightboxOpen ? <Lightbox src={currentSrc} alt={label} permalink={post.permalink} onClose={closeLightbox} canPrev={canPrev} canNext={canNext} onPrev={goPrev} onNext={goNext} onSwipePrev={goPrev} onSwipeNext={goNext} /> : null}
+      {lightboxOpen ? <Lightbox src={currentSrc} alt={label} permalink={post.permalink} embedUrl={embedUrl} onClose={closeLightbox} canPrev={canPrev} canNext={canNext} onPrev={goPrev} onNext={goNext} onSwipePrev={goPrev} onSwipeNext={goNext} /> : null}
     </div>
   );
 }
@@ -599,6 +601,7 @@ interface LightboxProps {
   src: string;
   alt: string;
   permalink: string;
+  embedUrl: string | null;
   onClose: () => void;
   canPrev: boolean;
   canNext: boolean;
@@ -608,7 +611,9 @@ interface LightboxProps {
   onSwipeNext: () => void;
 }
 
-function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNext, onSwipePrev, onSwipeNext }: LightboxProps) {
+function Lightbox({ src, alt, permalink, embedUrl, onClose, canPrev, canNext, onPrev, onNext, onSwipePrev, onSwipeNext }: LightboxProps) {
+  const [embedLoaded, setEmbedLoaded] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const [transition, setTransition] = useState<{
     src: string;
     alt: string;
@@ -682,37 +687,56 @@ function Lightbox({ src, alt, permalink, onClose, canPrev, canNext, onPrev, onNe
   const onOutgoingAnimationEnd = useCallback(() => {
     setTransition(null);
   }, []);
+  useEffect(() => {
+    if (embedUrl) closeButtonRef.current?.focus();
+  }, [embedUrl]);
   return (
     <div className={`${styles.lightbox} ${styles.lightboxOpen}`} role="dialog" aria-modal="true" aria-label={`Photo viewer: ${alt}`} tabIndex={-1} onClick={handleBackdropClick} onKeyDown={handleBackdropKeyDown}>
-      <div className={styles.lightboxContent}>
-        <button type="button" className={styles.lightboxClose} onClick={onClose} aria-label="Close photo viewer"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12" /><path d="M18 6L6 18" /></svg></button>
-        <div className={styles.lightboxImageWrap} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp}>
-          {canPrev ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowPrev}`} onClick={handlePrev} aria-label="Previous photo"><span aria-hidden="true">‹</span></button> : null}
-          {/* The prior full-screen image stays above the live image
-           * until the destination has loaded, then both layers run
-           * the direction-aware transition together. */}
-          {transition ? (
-            // biome-ignore lint/performance/noImgElement: transient copy of the already-loaded lightbox image
-            <img
-              key={transition.sequence}
-              src={transition.src}
-              alt={transition.alt}
-              decoding="async"
-              aria-hidden="true"
-              className={`${styles.lightboxImage} ${styles.lightboxUnder}${transition.fading ? ` ${transition.direction === 1 ? styles.lightboxOutgoingNext : styles.lightboxOutgoingPrev}` : ''}`}
-              onAnimationEnd={onOutgoingAnimationEnd}
+      <div className={`${styles.lightboxContent}${embedUrl ? ` ${styles.lightboxEmbedContent}` : ''}`}>
+        <button ref={closeButtonRef} type="button" className={styles.lightboxClose} onClick={onClose} aria-label="Close photo viewer"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 6l12 12" /><path d="M18 6L6 18" /></svg></button>
+        {embedUrl ? (
+          <div className={styles.lightboxEmbedWrap}>
+            {!embedLoaded ? <p className={styles.lightboxEmbedLoading} role="status">Loading Instagram carousel…</p> : null}
+            <iframe
+              src={embedUrl}
+              title={`Instagram carousel: ${alt}`}
+              className={`${styles.lightboxEmbed}${embedLoaded ? ` ${styles.lightboxEmbedLoaded}` : ''}`}
+              loading="eager"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allow="encrypted-media; picture-in-picture; web-share"
+              allowFullScreen
+              onLoad={() => setEmbedLoaded(true)}
             />
-          ) : null}
-          {/* biome-ignore lint/performance/noImgElement: see above */}
-          <img
-            src={src}
-            alt={alt}
-            decoding="async"
-            className={`${styles.lightboxImage}${transition?.fading ? ` ${transition.direction === 1 ? styles.lightboxImageEnterNext : styles.lightboxImageEnterPrev}` : ''}`}
-            onLoad={() => handleLiveImageLoad(src)}
-          />
-          {canNext ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowNext}`} onClick={handleNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
-        </div>
+          </div>
+        ) : (
+          <div className={styles.lightboxImageWrap} onPointerDown={handlePointerDown} onPointerUp={handlePointerUp}>
+            {canPrev ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowPrev}`} onClick={handlePrev} aria-label="Previous photo"><span aria-hidden="true">‹</span></button> : null}
+            {/* The prior full-screen image stays above the live image
+             * until the destination has loaded, then both layers run
+             * the direction-aware transition together. */}
+            {transition ? (
+              // biome-ignore lint/performance/noImgElement: transient copy of the already-loaded lightbox image
+              <img
+                key={transition.sequence}
+                src={transition.src}
+                alt={transition.alt}
+                decoding="async"
+                aria-hidden="true"
+                className={`${styles.lightboxImage} ${styles.lightboxUnder}${transition.fading ? ` ${transition.direction === 1 ? styles.lightboxOutgoingNext : styles.lightboxOutgoingPrev}` : ''}`}
+                onAnimationEnd={onOutgoingAnimationEnd}
+              />
+            ) : null}
+            {/* biome-ignore lint/performance/noImgElement: see above */}
+            <img
+              src={src}
+              alt={alt}
+              decoding="async"
+              className={`${styles.lightboxImage}${transition?.fading ? ` ${transition.direction === 1 ? styles.lightboxImageEnterNext : styles.lightboxImageEnterPrev}` : ''}`}
+              onLoad={() => handleLiveImageLoad(src)}
+            />
+            {canNext ? <button type="button" className={`${styles.lightboxArrow} ${styles.lightboxArrowNext}`} onClick={handleNext} aria-label="Next photo"><span aria-hidden="true">›</span></button> : null}
+          </div>
+        )}
         <a href={permalink} target="_blank" rel="noopener noreferrer" className={styles.lightboxInstagram} aria-label={`Open this photo on Instagram in a new tab: ${alt}`}><span>View on Instagram</span></a>
       </div>
     </div>

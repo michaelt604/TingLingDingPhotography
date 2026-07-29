@@ -345,6 +345,52 @@
   max-height: calc(100dvh - 120px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   object-fit: contain;
 }
+
+.lightboxEmbedContent {
+  width: min(658px, calc(100vw - 40px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+  max-height: calc(100dvh - 120px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+
+.lightboxEmbedWrap {
+  position: relative;
+  width: 100%;
+  height: min(820px, calc(100dvh - 120px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
+  min-height: 320px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.lightboxEmbed {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.lightboxEmbedLoaded {
+  opacity: 1;
+}
+
+.lightboxEmbedLoading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 24px;
+  color: #737373;
+  background: #fff;
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+}
 /* Full-screen outgoing layer. It remains opaque while the destination
  * loads, then slides above the entering live image. */
 .lightboxUnder {
@@ -517,6 +563,12 @@
     max-width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
     max-height: calc(100dvh - 128px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   }
+  .lightboxEmbedContent {
+    width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  }
+  .lightboxEmbedWrap {
+    height: calc(100dvh - 128px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .tile,
@@ -524,7 +576,8 @@
   .lightbox,
   .lightboxArrow,
   .lightboxInstagram,
-  .tileInstagramLink {
+  .tileInstagramLink,
+  .lightboxEmbed {
     transition: none;
   }
   /*
