@@ -5,13 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ALLOWED_ORIGIN = "https://tinglingdingphotography.com,https://www.tinglingdingphotography.com"
-GRAPH_API_VERSION = "v25.0"
-IG_INSTAGRAM_APP_ID = "988390037129226"
-IG_INSTAGRAM_REDIRECT_URI = "https://ig-proxy.michaelt604.workers.dev/oauth/instagram/callback"
-
-[[kv_namespaces]]
-binding = "IG_TOKEN_STORE"
-id = "b98f1e95898a48c4a4c1cd7dd7aa0677"
+GRAPH_API_VERSION = "v23.0"
 
 # Secrets (set these with `wrangler secret put`):
 #   IG_USER_ID_UNDERWATER
@@ -20,11 +14,8 @@ id = "b98f1e95898a48c4a4c1cd7dd7aa0677"
 #   IG_ACCESS_TOKEN_PORTRAITS
 #   IG_COLLAB_USER_ID_UNDERWATER
 #   IG_COLLAB_ACCESS_TOKEN_UNDERWATER
-#   IG_COLLAB_CHILD_ACCESS_TOKEN_UNDERWATER (Instagram-host token for carousel children)
 #   IG_COLLAB_USER_ID_PORTRAITS
 #   IG_COLLAB_ACCESS_TOKEN_PORTRAITS
-#   IG_COLLAB_CHILD_ACCESS_TOKEN_PORTRAITS (Instagram-host token for carousel children)
-#   IG_INSTAGRAM_APP_SECRET
 #
 # Example:
 #   wrangler secret put IG_USER_ID_UNDERWATER
