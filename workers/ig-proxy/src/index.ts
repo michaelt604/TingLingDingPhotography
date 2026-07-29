@@ -874,22 +874,47 @@ async function fetchCollaborativeMediaPage(
     graphApiHost: 'graph.facebook.com' | 'graph.instagram.com';
   },
 ): Promise<MediaPageResult> {
-  const fetchOnce = (
+  const fetchOnce = async (
     token: string,
     host: 'graph.facebook.com' | 'graph.instagram.com',
     fields: string,
-  ): Promise<MediaPageResult> =>
-    fetchMediaPage(
-      buildMediaUrl(
-        graphApiVersion,
-        userId,
-        'collaborative_media',
-        after,
-        host,
-        fields,
-      ),
-      token,
+  ): Promise<MediaPageResult> => {
+    const url = buildMediaUrl(
+      graphApiVersion,
+      userId,
+      'collaborative_media',
+      after,
+      host,
+      fields,
     );
+    try {
+      const response = await fetch(url, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const payload = (await response.json()) as unknown;
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+          return { outcome: 'failure' };
+        }
+        if (!Array.isArray((payload as Record<string, unknown>).data)) {
+          return { outcome: 'failure' };
+        }
+        return { outcome: 'success', payload: payload as Record<string, unknown> };
+      }
+      const errorPayload = await parseUpstreamJson(response);
+      console.error(
+        'Instagram collaborative media request failed',
+        { host, status: response.status, error: safeUpstreamError(errorPayload) },
+      );
+      return { outcome: 'failure', status: response.status };
+    } catch (error) {
+      console.error(
+        'Instagram collaborative media request failed',
+        { host, error: error instanceof Error ? error.name : 'UnknownError' },
+      );
+      return { outcome: 'failure' };
+    }
+  };
 
   const expanded = await fetchOnce(accessToken, graphApiHost, COLLABORATIVE_MEDIA_FIELDS);
   if (expanded.outcome !== 'failure') return expanded;
@@ -1225,10 +1250,9 @@ export default {
       }
 
       if (collaborativeResult.outcome === 'failure') {
-        console.error('Instagram collaborative media request failed', {
-          side,
-          status: collaborativeResult.status,
-        });
+        // Per-attempt upstream error has already been logged inside
+        // fetchCollaborativeMediaPage; keep the existing owned-only
+        // behavior so collaborators failing never hides the feed.
       }
 
       const ownedPosts = await inlineCarouselChildren(
