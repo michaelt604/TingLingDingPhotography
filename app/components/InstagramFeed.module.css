@@ -353,6 +353,7 @@
 
 .lightboxEmbedWrap {
   position: relative;
+  isolation: isolate;
   width: 100%;
   height: min(820px, calc(100dvh - 120px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)));
   min-height: 320px;
@@ -362,7 +363,22 @@
   background: #fff;
 }
 
+.lightboxEmbedCover {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+  pointer-events: none;
+}
+
 .lightboxEmbed {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
   display: block;
   width: 100%;
   height: 100%;
@@ -378,18 +394,25 @@
 
 .lightboxEmbedLoading {
   position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
+  inset-inline-start: 50%;
+  inset-block-end: 16px;
+  z-index: 3;
   margin: 0;
-  padding: 24px;
-  color: #737373;
-  background: #fff;
+  max-width: calc(100% - 32px);
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(15, 15, 18, 0.72);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   font-family: var(--ff-mono);
   font-size: 11px;
   letter-spacing: 0.1em;
   text-align: center;
   text-transform: uppercase;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  pointer-events: none;
 }
 /* Full-screen outgoing layer. It remains opaque while the destination
  * loads, then slides above the entering live image. */

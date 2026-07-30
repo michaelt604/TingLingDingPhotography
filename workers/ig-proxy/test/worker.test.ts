@@ -149,6 +149,7 @@ test("resolveAllowlist fails closed for invalid entries", () => {
 });
 
 test("Graph API version is configurable and validated", () => {
+	assert.equal(DEFAULT_GRAPH_API_VERSION, "v25.0");
 	assert.equal(resolveGraphApiVersion(baseEnv), DEFAULT_GRAPH_API_VERSION);
 	assert.equal(
 		resolveGraphApiVersion({ ...baseEnv, GRAPH_API_VERSION: "v24.0" }),
@@ -255,6 +256,246 @@ function upstreamPage(
 function requestPath(input: string | URL | Request): URL {
 	return new URL(input instanceof Request ? input.url : String(input));
 }
+
+function compositeCursor(
+	ownedMediaProvider: "facebook" | "instagram",
+	mediaAfter: string | null = null,
+): string {
+	return btoa(
+		JSON.stringify({
+			version: 2,
+			ownedMediaProvider,
+			media: { after: mediaAfter, exhausted: false, failures: 0 },
+			collaborativeMedia: { after: null, exhausted: true, failures: 0 },
+		}),
+	)
+		.replace(/\+/g, "-")
+		.replace(/\//g, "_")
+		.replace(/=+$/u, "");
+}
+
+test("portraits use one Facebook token for owned and collaborative Graph requests", async () => {
+	const calls: Array<{ host: string; path: string; token: string | null }> = [];
+	await withWorkerMocks(
+		async (input, init) => {
+			const url = requestPath(input);
+			calls.push({
+				host: url.hostname,
+				path: url.pathname,
+				token: new Headers(init?.headers).get("Authorization"),
+			});
+			return url.pathname.endsWith("/collaborative_media")
+				? upstreamPage([{ id: "collaborative" }])
+				: upstreamPage([{ id: "owned" }]);
+		},
+		async () => {
+			const response = await worker.fetch(
+				new Request("https://worker.test/portraits"),
+				readyEnv,
+			);
+			assert.equal(response.status, 200);
+			assert.deepEqual(await response.json(), {
+				data: [{ id: "collaborative" }, { id: "owned" }],
+			});
+			assert.deepEqual(
+				calls.map(({ host, path }) => ({ host, path })).sort((left, right) =>
+					left.path.localeCompare(right.path),
+				),
+				[
+					{
+						host: "graph.facebook.com",
+						path: "/v23.0/4/collaborative_media",
+					},
+					{ host: "graph.facebook.com", path: "/v23.0/4/media" },
+				],
+			);
+			assert.equal(
+				calls.every(({ token }) => token === "Bearer collab-secret-2"),
+				true,
+			);
+		},
+	);
+});
+
+test("portrait owned fallback stays on Instagram for the full cursor chain", async () => {
+	const calls: Array<{ host: string; path: string; after: string | null }> = [];
+	await withWorkerMocks(
+		async (input) => {
+			const url = requestPath(input);
+			calls.push({
+				host: url.hostname,
+				path: url.pathname,
+				after: url.searchParams.get("after"),
+			});
+			if (
+				url.hostname === "graph.facebook.com" &&
+				url.pathname.endsWith("/media")
+			) {
+				return new Response(null, { status: 503 });
+			}
+			if (url.pathname.endsWith("/collaborative_media")) {
+				return upstreamPage([{ id: "collaborative" }]);
+			}
+			if (url.searchParams.get("after") === "instagram-next") {
+				return upstreamPage([{ id: "owned-2" }]);
+			}
+			return upstreamPage([{ id: "owned-1" }], "instagram-next");
+		},
+		async (capture) => {
+			const first = await worker.fetch(
+				new Request("https://worker.test/portraits"),
+				readyEnv,
+			);
+			assert.equal(first.headers.get("Cache-Control"), "no-store");
+			assert.equal(capture.puts.length, 0);
+			const firstBody = (await first.json()) as {
+				data: Array<{ id: string }>;
+				paging: { next: string };
+			};
+			assert.deepEqual(
+				firstBody.data.map(({ id }) => id).sort(),
+				["collaborative", "owned-1"],
+			);
+			const firstCursor = decodeCompositeCursor(firstBody.paging.next);
+			assert.equal(firstCursor?.ownedMediaProvider, "instagram");
+			assert.equal(firstCursor?.media.after, "instagram-next");
+
+			const secondUrl = new URL("https://worker.test/portraits");
+			secondUrl.searchParams.set("cursor", firstBody.paging.next);
+			const second = await worker.fetch(new Request(secondUrl), readyEnv);
+			assert.deepEqual(await second.json(), { data: [{ id: "owned-2" }] });
+
+			assert.equal(
+				calls.some(
+					({ host, path, after }) =>
+						host === "graph.facebook.com" &&
+						path.endsWith("/media") &&
+						after === "instagram-next",
+				),
+				false,
+			);
+			assert.equal(
+				calls.some(
+					({ host, path, after }) =>
+						host === "graph.instagram.com" &&
+						path === "/v23.0/2/media" &&
+						after === "instagram-next",
+				),
+				true,
+			);
+		},
+	);
+});
+
+test("later Facebook pages fail without crossing providers", async () => {
+	const calls: Array<{ host: string; after: string | null }> = [];
+	await withWorkerMocks(
+		async (input) => {
+			const url = requestPath(input);
+			calls.push({
+				host: url.hostname,
+				after: url.searchParams.get("after"),
+			});
+			return new Response(null, { status: 503 });
+		},
+		async () => {
+			const url = new URL("https://worker.test/portraits");
+			url.searchParams.set("cursor", compositeCursor("facebook", "facebook-next"));
+			const response = await worker.fetch(new Request(url), readyEnv);
+			assert.equal(response.status, 502);
+			assert.equal(
+				calls.some(({ host }) => host === "graph.instagram.com"),
+				false,
+			);
+			assert.equal(
+				calls.some(
+					({ host, after }) =>
+						host === "graph.facebook.com" && after === "facebook-next",
+				),
+				true,
+			);
+		},
+	);
+});
+
+test("portraits without Facebook credentials use uncached Instagram media", async () => {
+	const hosts: string[] = [];
+	const envWithoutFacebook = {
+		...readyEnv,
+		IG_COLLAB_USER_ID_PORTRAITS: undefined,
+		IG_COLLAB_ACCESS_TOKEN_PORTRAITS: undefined,
+	};
+	await withWorkerMocks(
+		async (input) => {
+			const url = requestPath(input);
+			hosts.push(url.hostname);
+			return upstreamPage([{ id: "owned" }]);
+		},
+		async (capture) => {
+			const response = await worker.fetch(
+				new Request("https://worker.test/portraits"),
+				envWithoutFacebook,
+			);
+			assert.equal(response.status, 200);
+			assert.equal(response.headers.get("Cache-Control"), "no-store");
+			assert.deepEqual(hosts, ["graph.instagram.com"]);
+			assert.equal(capture.puts.length, 0);
+		},
+	);
+});
+
+test("degraded collaborator responses are returned without edge caching", async () => {
+	await withWorkerMocks(
+		async (input) => {
+			const url = requestPath(input);
+			return url.pathname.endsWith("/collaborative_media")
+				? new Response(null, { status: 503 })
+				: upstreamPage([{ id: "owned" }]);
+		},
+		async (capture) => {
+			const response = await worker.fetch(
+				new Request("https://worker.test/portraits"),
+				readyEnv,
+			);
+			assert.equal(response.status, 200);
+			assert.equal(response.headers.get("Cache-Control"), "no-store");
+			const body = (await response.json()) as { data: Array<{ id: string }> };
+			assert.deepEqual(body.data, [{ id: "owned" }]);
+			assert.equal(capture.puts.length, 0);
+		},
+	);
+});
+
+test("provider-mismatched cursors are rejected before fetching", async () => {
+	let fetchCount = 0;
+	await withWorkerMocks(
+		async () => {
+			fetchCount += 1;
+			return upstreamPage([]);
+		},
+		async () => {
+			const underwater = new URL("https://worker.test/underwater");
+			underwater.searchParams.set("cursor", compositeCursor("facebook"));
+			assert.equal(
+				(await worker.fetch(new Request(underwater), readyEnv)).status,
+				400,
+			);
+
+			const portraits = new URL("https://worker.test/portraits");
+			portraits.searchParams.set("cursor", compositeCursor("facebook"));
+			assert.equal(
+				(
+					await worker.fetch(new Request(portraits), {
+						...readyEnv,
+						IG_COLLAB_ACCESS_TOKEN_PORTRAITS: undefined,
+					})
+				).status,
+				400,
+			);
+			assert.equal(fetchCount, 0);
+		},
+	);
+});
 
 test("merges owned and collaborative posts by descending timestamp, dedupes ids, and expands carousels", async () => {
 	const calls: URL[] = [];

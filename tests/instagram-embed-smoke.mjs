@@ -113,13 +113,16 @@ try {
 				body: CHILD_SVG,
 			}),
 		);
-		await page.route(EMBED_URL, (route) =>
-			route.fulfill({
+		await page.route(EMBED_URL, async (route) => {
+			// Hold the embed response long enough to assert the immediate
+			// cover state before the iframe load event starts the fade.
+			await delay(600);
+			await route.fulfill({
 				status: 200,
 				contentType: "text/html",
 				body: EMBED_HTML,
-			}),
-		);
+			});
+		});
 
 		await page.goto(`${SITE}/portraits/`, { waitUntil: "load" });
 		const tile = page.getByRole("button", {
@@ -155,12 +158,31 @@ try {
 		const dialog = page.getByRole("dialog");
 		await dialog.waitFor();
 		const iframe = dialog.locator("iframe");
-		await iframe.waitFor();
+		await iframe.waitFor({ state: "attached" });
+		const cover = dialog.locator("img");
 		assert.equal(
-			await dialog.locator("img").count(),
-			0,
-			"embed fallback must replace the custom lightbox image",
+			await cover.count(),
+			1,
+			"embed fallback must immediately preserve the Graph cover",
 		);
+		assert.equal(
+			await cover.getAttribute("src"),
+			COVER_URL,
+			"embed fallback must show the selected post cover",
+		);
+		await page.waitForFunction(
+			(image) =>
+				image.complete &&
+				image.naturalWidth > 0 &&
+				getComputedStyle(image).opacity === "1",
+			await cover.elementHandle(),
+		);
+		assert.equal(
+			await iframe.evaluate((node) => getComputedStyle(node).opacity),
+			"0",
+			"embed must stay transparent while its document loads",
+		);
+		await dialog.getByRole("status").waitFor();
 
 		const bounds = await iframe.boundingBox();
 		assert(bounds, "embed iframe has no rendered bounds");
@@ -177,6 +199,21 @@ try {
 		const frame = page.frameLocator("iframe");
 		await frame.getByRole("button", { name: "Next" }).click();
 		await frame.getByText("Slide 2").waitFor();
+		await page.waitForFunction(
+			(frameElement) =>
+				Number.parseFloat(getComputedStyle(frameElement).opacity) >= 0.99,
+			await iframe.elementHandle(),
+		);
+		assert.equal(
+			await cover.evaluate((node) => getComputedStyle(node).opacity),
+			"1",
+			"cover must remain behind the loaded embed during the fade",
+		);
+		assert.equal(
+			await dialog.getByRole("status").count(),
+			0,
+			"loading status must clear once the embed is ready",
+		);
 
 		await dialog.getByRole("button", { name: "Close photo viewer" }).click();
 		await dialog.waitFor({ state: "detached" });

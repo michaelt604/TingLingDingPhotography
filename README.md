@@ -155,7 +155,7 @@ caches at the edge for 1 hour, and returns CORS-safe JSON.
    is dead).
 
 4. **Get the user IDs.** Visit
-   `https://graph.instagram.com/v23.0/me?fields=id&access_token=SHORT_TOKEN`
+   `https://graph.instagram.com/v25.0/me?fields=id&access_token=SHORT_TOKEN`
    for each account. Copy the numeric `id` field for each.
 
 5. **Generate a long-lived access token** for each account:
@@ -167,6 +167,13 @@ caches at the edge for 1 hour, and returns CORS-safe JSON.
      "https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=APP_SECRET&access_token=SHORT_TOKEN"
    ```
    Do this twice — once per IG account, using the matching token.
+
+   Portraits also uses a Facebook Graph user/page token with
+   `instagram_basic`, `pages_show_list`, and `pages_read_engagement`. Store it
+   as `IG_COLLAB_ACCESS_TOKEN_PORTRAITS`. The Worker uses that one Facebook
+   token for both the portrait account's `/media` and `/collaborative_media`
+   edges. `IG_ACCESS_TOKEN_PORTRAITS` remains an owned-media fallback through
+   `graph.instagram.com`; it is never used for collaborator requests.
 
 6. **Deploy the Worker** (the code is already in `workers/ig-proxy/`). The public production Worker is `https://ig-proxy.michaelt604.workers.dev`. GitHub Actions deploys this Worker from the repository root before uploading the Pages artifact on pushes to `main`. For a manual deployment, use the existing workspace tooling:
    ```bash
@@ -263,7 +270,7 @@ way to point it at Pages is to move DNS to Cloudflare.
 
 ### Environment variables
 
-The tracked `.env.production` sets `NEXT_PUBLIC_IG_PROXY_URL` to the public Worker at `https://ig-proxy.michaelt604.workers.dev`. GitHub Actions validates this exact HTTPS host before every production build. Worker access tokens remain existing Cloudflare Worker secrets and must never be placed in Pages, repository files, or GitHub build variables. To include posts where the account is a collaborator, also set `IG_COLLAB_USER_ID_UNDERWATER`, `IG_COLLAB_ACCESS_TOKEN_UNDERWATER`, `IG_COLLAB_USER_ID_PORTRAITS`, and `IG_COLLAB_ACCESS_TOKEN_PORTRAITS` on the Worker. The collaborator tokens use the Facebook Graph API permissions configured for each connected Instagram account.
+The tracked `.env.production` sets `NEXT_PUBLIC_IG_PROXY_URL` to the public Worker at `https://ig-proxy.michaelt604.workers.dev`. GitHub Actions validates this exact HTTPS host before every production build. Worker access tokens remain existing Cloudflare Worker secrets and must never be placed in Pages, repository files, or GitHub build variables. To include posts where the account is a collaborator, also set `IG_COLLAB_USER_ID_UNDERWATER`, `IG_COLLAB_ACCESS_TOKEN_UNDERWATER`, `IG_COLLAB_USER_ID_PORTRAITS`, and `IG_COLLAB_ACCESS_TOKEN_PORTRAITS` on the Worker. The portrait collaborator token is the canonical Facebook Graph token for both portrait-owned and collaborator media and must include `instagram_basic`, `pages_show_list`, and `pages_read_engagement`. The existing portrait Instagram token is retained only as the owned-media fallback. No OAuth callback or KV token-exchange path is used.
 
 
 ---

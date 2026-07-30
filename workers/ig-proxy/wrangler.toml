@@ -5,7 +5,7 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ALLOWED_ORIGIN = "https://tinglingdingphotography.com,https://www.tinglingdingphotography.com"
-GRAPH_API_VERSION = "v23.0"
+GRAPH_API_VERSION = "v25.0"
 
 # Secrets (set these with `wrangler secret put`):
 #   IG_USER_ID_UNDERWATER
@@ -15,7 +15,12 @@ GRAPH_API_VERSION = "v23.0"
 #   IG_COLLAB_USER_ID_UNDERWATER
 #   IG_COLLAB_ACCESS_TOKEN_UNDERWATER
 #   IG_COLLAB_USER_ID_PORTRAITS
-#   IG_COLLAB_ACCESS_TOKEN_PORTRAITS
+#   IG_COLLAB_ACCESS_TOKEN_PORTRAITS (Facebook Graph token; primary for both
+#     portrait /media and /collaborative_media. Requires instagram_basic,
+#     pages_show_list, and pages_read_engagement.)
+#
+# IG_ACCESS_TOKEN_PORTRAITS remains the graph.instagram.com owned-media
+# fallback when the Facebook Graph request is temporarily unavailable.
 #
 # Example:
 #   wrangler secret put IG_USER_ID_UNDERWATER

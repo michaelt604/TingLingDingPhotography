@@ -104,7 +104,7 @@ export interface Env {
 }
 
 const CACHE_TTL_SECONDS = 3600;
-export const DEFAULT_GRAPH_API_VERSION = "v23.0";
+export const DEFAULT_GRAPH_API_VERSION = "v25.0";
 
 const CORS = (origin: string) => ({
 	"Access-Control-Allow-Origin": origin,
@@ -152,6 +152,8 @@ interface FeedRoute {
 	collaborative: ApiCredentials;
 }
 
+type OwnedMediaProvider = "facebook" | "instagram";
+
 function routeFor(path: string, env: Env): FeedRoute | null {
 	if (path === "underwater") {
 		return {
@@ -178,6 +180,32 @@ function routeFor(path: string, env: Env): FeedRoute | null {
 		};
 	}
 	return null;
+}
+
+function initialOwnedMediaProvider(
+	side: string,
+	route: FeedRoute,
+): OwnedMediaProvider {
+	return side === "portraits" &&
+		route.collaborative.userId &&
+		route.collaborative.accessToken
+		? "facebook"
+		: "instagram";
+}
+
+function ownedMediaSource(
+	route: FeedRoute,
+	provider: OwnedMediaProvider,
+): { credentials: ApiCredentials; graphApiHost: string } {
+	return provider === "facebook"
+		? {
+				credentials: route.collaborative,
+				graphApiHost: "graph.facebook.com",
+			}
+		: {
+				credentials: route.owned,
+				graphApiHost: "graph.instagram.com",
+			};
 }
 
 const MEDIA_FIELDS =
@@ -399,7 +427,7 @@ export function resolveGraphApiVersion(env: Env): string | null {
 // Returns null when the value is empty, too long, or malformed.
 const MAX_CURSOR_LENGTH = 256;
 const MAX_CLIENT_CURSOR_LENGTH = 1024;
-const CACHE_SCHEMA_VERSION = "collaborative-v3";
+const CACHE_SCHEMA_VERSION = "facebook-primary-v1";
 
 interface SourceCursorState {
 	after: string | null;
@@ -408,7 +436,8 @@ interface SourceCursorState {
 }
 
 interface CompositeCursor {
-	version: 1;
+	version: 2;
+	ownedMediaProvider: OwnedMediaProvider;
 	media: SourceCursorState;
 	collaborativeMedia: SourceCursorState;
 }
@@ -487,15 +516,33 @@ export function decodeCompositeCursor(value: unknown): CompositeCursor | null {
 		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
 			return null;
 		const candidate = parsed as Record<string, unknown>;
-		if (!hasExactKeys(candidate, ["version", "media", "collaborativeMedia"]))
+		if (
+			!hasExactKeys(candidate, [
+				"version",
+				"ownedMediaProvider",
+				"media",
+				"collaborativeMedia",
+			])
+		)
 			return null;
-		if (candidate.version !== 1) return null;
+		if (candidate.version !== 2) return null;
+		if (
+			candidate.ownedMediaProvider !== "facebook" &&
+			candidate.ownedMediaProvider !== "instagram"
+		) {
+			return null;
+		}
 		const media = parseSourceCursorState(candidate.media);
 		const collaborativeMedia = parseSourceCursorState(
 			candidate.collaborativeMedia,
 		);
 		if (!media || !collaborativeMedia) return null;
-		const cursor: CompositeCursor = { version: 1, media, collaborativeMedia };
+		const cursor: CompositeCursor = {
+			version: 2,
+			ownedMediaProvider: candidate.ownedMediaProvider,
+			media,
+			collaborativeMedia,
+		};
 		return encodeCompositeCursor(cursor) === value ? cursor : null;
 	} catch {
 		return null;
@@ -571,22 +618,41 @@ async function fetchMediaPage(
 	url: URL,
 	accessToken: string,
 ): Promise<MediaPageResult> {
+	let response: Response;
 	try {
-		const response = await fetch(url, {
+		response = await fetch(url, {
 			headers: { Authorization: `Bearer ${accessToken}` },
 		});
-		if (!response.ok) return { outcome: "failure", status: response.status };
-		const payload = (await response.json()) as unknown;
-		if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-			return { outcome: "failure" };
-		}
-		if (!Array.isArray((payload as Record<string, unknown>).data)) {
-			return { outcome: "failure" };
-		}
-		return { outcome: "success", payload: payload as Record<string, unknown> };
+	} catch (error) {
+		console.error("Instagram media request threw", {
+			host: url.host,
+			path: url.pathname,
+			error: error instanceof Error ? error.name : "UnknownError",
+		});
+		return { outcome: "failure" };
+	}
+	if (!response.ok) {
+		console.error("Instagram media request failed", {
+			host: url.host,
+			path: url.pathname,
+			status: response.status,
+			statusText: response.statusText,
+		});
+		return { outcome: "failure", status: response.status };
+	}
+	let payload: unknown;
+	try {
+		payload = await response.json();
 	} catch {
 		return { outcome: "failure" };
 	}
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+		return { outcome: "failure" };
+	}
+	if (!Array.isArray((payload as Record<string, unknown>).data)) {
+		return { outcome: "failure" };
+	}
+	return { outcome: "success", payload: payload as Record<string, unknown> };
 }
 
 function postsFromResult(result: MediaPageResult): Record<string, unknown>[] {
@@ -744,13 +810,21 @@ export default {
 
 		const rawCursor = url.searchParams.get("cursor");
 		let pagination: CompositeCursor = {
-			version: 1,
+			version: 2,
+			ownedMediaProvider: initialOwnedMediaProvider(side, route),
 			media: { after: null, exhausted: false, failures: 0 },
 			collaborativeMedia: { after: null, exhausted: false, failures: 0 },
 		};
 		if (rawCursor !== null) {
 			const decoded = decodeCompositeCursor(rawCursor);
-			if (!decoded) {
+			if (
+				!decoded ||
+				(side !== "portraits" &&
+					decoded.ownedMediaProvider !== "instagram") ||
+				(decoded.ownedMediaProvider === "facebook" &&
+					(!route.collaborative.userId ||
+						!route.collaborative.accessToken))
+			) {
 				return errorResponse("Invalid cursor.", effectiveOrigin, 400);
 			}
 			pagination = decoded;
@@ -774,22 +848,28 @@ export default {
 			}
 
 			const skipped: MediaPageResult = { outcome: "skipped" };
-			const [mediaResult, collaborativeResult] = await Promise.all([
+			let ownedProvider = pagination.ownedMediaProvider;
+			let ownedSource = ownedMediaSource(route, ownedProvider);
+			let ownedFallbackUsed = false;
+			const collaborativeConfigured = Boolean(
+				route.collaborative.userId && route.collaborative.accessToken,
+			);
+			let [mediaResult, collaborativeResult] = await Promise.all([
 				pagination.media.exhausted
 					? Promise.resolve(skipped)
 					: fetchMediaPage(
 							buildMediaUrl(
 								graphApiVersion,
-								route.owned.userId,
+								ownedSource.credentials.userId,
 								"media",
 								pagination.media.after,
-								"graph.instagram.com",
+								ownedSource.graphApiHost,
 							),
-							route.owned.accessToken,
+							ownedSource.credentials.accessToken,
 						),
 				pagination.collaborativeMedia.exhausted
 					? Promise.resolve(skipped)
-					: !route.collaborative.userId || !route.collaborative.accessToken
+					: !collaborativeConfigured
 						? Promise.resolve({
 								outcome: "success",
 								payload: { data: [] },
@@ -805,6 +885,27 @@ export default {
 								route.collaborative.accessToken,
 							),
 			]);
+
+			if (
+				mediaResult.outcome === "failure" &&
+				side === "portraits" &&
+				rawCursor === null &&
+				ownedProvider === "facebook"
+			) {
+				ownedProvider = "instagram";
+				ownedSource = ownedMediaSource(route, ownedProvider);
+				ownedFallbackUsed = true;
+				mediaResult = await fetchMediaPage(
+					buildMediaUrl(
+						graphApiVersion,
+						ownedSource.credentials.userId,
+						"media",
+						null,
+						ownedSource.graphApiHost,
+					),
+					ownedSource.credentials.accessToken,
+				);
+			}
 
 			if (mediaResult.outcome === "failure") {
 				console.error("Instagram API request failed", {
@@ -828,9 +929,9 @@ export default {
 
 			const ownedPosts = await inlineCarouselChildren(
 				graphApiVersion,
-				route.owned.accessToken,
+				ownedSource.credentials.accessToken,
 				postsFromResult(mediaResult),
-				"graph.instagram.com",
+				ownedSource.graphApiHost,
 			);
 			const collaborativePosts = await inlineCarouselChildren(
 				graphApiVersion,
@@ -840,7 +941,8 @@ export default {
 			);
 			const augmentedPosts = mergeMediaPosts(ownedPosts, collaborativePosts);
 			const nextPagination: CompositeCursor = {
-				version: 1,
+				version: 2,
+				ownedMediaProvider: ownedProvider,
 				media: stateFromResult(pagination.media, mediaResult),
 				collaborativeMedia: stateFromResult(
 					pagination.collaborativeMedia,
@@ -856,6 +958,17 @@ export default {
 						paging: { next: encodeCompositeCursor(nextPagination) },
 					}
 				: { data: augmentedPosts };
+			const collaborativeDegraded =
+				!collaborativeConfigured ||
+				collaborativeResult.outcome === "failure";
+			if (collaborativeDegraded || ownedFallbackUsed) {
+				return jsonResponse(
+					responseBody,
+					effectiveOrigin,
+					200,
+					"no-store",
+				);
+			}
 			const cacheable = new Response(JSON.stringify(responseBody), {
 				headers: { "Cache-Control": `public, max-age=${CACHE_TTL_SECONDS}` },
 			});

@@ -1061,6 +1061,19 @@ function Lightbox({
 				</button>
 				{embedUrl ? (
 					<div className={styles.lightboxEmbedWrap}>
+						{/* Keep the already-loaded Graph cover visible while the
+						 * cross-origin Instagram document starts. The iframe is
+						 * mounted immediately above it and fades in only after its
+						 * load event, so opening a collaborator carousel never
+						 * flashes an empty white panel. */}
+						{/* biome-ignore lint/performance/noImgElement: transient copy of the already-loaded Graph cover */}
+						<img
+							src={src}
+							alt=""
+							decoding="async"
+							aria-hidden="true"
+							className={styles.lightboxEmbedCover}
+						/>
 						{!embedLoaded ? (
 							<p className={styles.lightboxEmbedLoading} role="status">
 								Loading Instagram carousel…
