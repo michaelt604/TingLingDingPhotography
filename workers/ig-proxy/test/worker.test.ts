@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import worker, {
 	buildCacheKey,
+	buildKvCacheKey,
 	DEFAULT_GRAPH_API_VERSION,
 	decodeCompositeCursor,
 	type Env,
@@ -196,14 +197,77 @@ const productionEnv: Env = {
 	ALLOWED_ORIGIN: productionAllowlist,
 };
 
+interface KvCapture {
+	gets: string[];
+	puts: Array<{
+		key: string;
+		value: string;
+		expirationTtl: number | undefined;
+	}>;
+	values: Map<string, string>;
+}
+
+function createKvMock(options?: {
+	initial?: Record<string, unknown>;
+	readError?: Error;
+	writeError?: Error;
+	writeGate?: Promise<void>;
+}): { namespace: KVNamespace; capture: KvCapture } {
+	const capture: KvCapture = {
+		gets: [],
+		puts: [],
+		values: new Map(
+			Object.entries(options?.initial ?? {}).map(([key, value]) => [
+				key,
+				JSON.stringify(value),
+			]),
+		),
+	};
+	const namespace = {
+		get: async (key: string) => {
+			capture.gets.push(key);
+			if (options?.readError) throw options.readError;
+			const value = capture.values.get(key);
+			return value === undefined ? null : JSON.parse(value);
+		},
+		put: async (
+			key: string,
+			value: string,
+			putOptions?: { expirationTtl?: number },
+		) => {
+			capture.puts.push({
+				key,
+				value,
+				expirationTtl: putOptions?.expirationTtl,
+			});
+			if (options?.writeGate) await options.writeGate;
+			if (options?.writeError) throw options.writeError;
+			capture.values.set(key, value);
+		},
+	} as KVNamespace;
+	return { namespace, capture };
+}
+
+function cacheEnvelope(
+	body: unknown,
+	ttlSeconds = 3600,
+): Record<string, unknown> {
+	return {
+		version: 1,
+		expiresAt: Date.now() + ttlSeconds * 1000,
+		body,
+	};
+}
+
 interface CacheCapture {
 	matchedKeys: Request[];
-	puts: Array<{ key: Request; body: string }>;
+	puts: Array<{ key: Request; body: string; cacheControl: string | null }>;
 }
 
 async function withWorkerMocks(
 	fetchImplementation: typeof fetch,
 	run: (capture: CacheCapture) => Promise<void>,
+	options?: { localCacheValue?: unknown },
 ): Promise<void> {
 	const originalFetch = globalThis.fetch;
 	const originalCaches = Reflect.get(globalThis, "caches");
@@ -214,10 +278,16 @@ async function withWorkerMocks(
 			default: {
 				match: async (key: Request) => {
 					capture.matchedKeys.push(key);
-					return undefined;
+					return options && "localCacheValue" in options
+						? Response.json(options.localCacheValue)
+						: undefined;
 				},
 				put: async (key: Request, response: Response) => {
-					capture.puts.push({ key, body: await response.text() });
+					capture.puts.push({
+						key,
+						body: await response.text(),
+						cacheControl: response.headers.get("Cache-Control"),
+					});
 				},
 			},
 		},
@@ -256,6 +326,351 @@ function upstreamPage(
 function requestPath(input: string | URL | Request): URL {
 	return new URL(input instanceof Request ? input.url : String(input));
 }
+
+test("globally shared KV hit bypasses Instagram Graph requests", async () => {
+	const localCacheKey = buildCacheKey("underwater", "1", "v23.0");
+	const cacheKey = await buildKvCacheKey(localCacheKey);
+	const kv = createKvMock({
+		initial: {
+			[cacheKey]: cacheEnvelope({ data: [{ id: "cached-post" }] }),
+		},
+	});
+	let upstreamCalls = 0;
+
+	await withWorkerMocks(
+		async () => {
+			upstreamCalls += 1;
+			throw new Error("Graph API must not be called for a KV hit");
+		},
+		async () => {
+			const response = await worker.fetch(
+				new Request("https://worker.test/underwater"),
+				{ ...readyEnv, IG_FEED_CACHE: kv.namespace },
+			);
+			assert.equal(response.status, 200);
+			assert.deepEqual(await response.json(), {
+				data: [{ id: "cached-post" }],
+			});
+			assert.equal(upstreamCalls, 0);
+			assert.deepEqual(kv.capture.gets, [cacheKey]);
+			assert.equal(kv.capture.puts.length, 0);
+		},
+	);
+});
+
+test("KV keys stay below the platform limit for maximum valid cursors", async () => {
+	const cursor = compositeCursor("instagram", "a".repeat(256));
+	const localCacheKey = buildCacheKey(
+		"underwater",
+		"12345678901234567",
+		"v25.0",
+		cursor,
+	);
+	assert.equal(
+		new TextEncoder().encode(localCacheKey.url).byteLength > 512,
+		true,
+	);
+	const kvCacheKey = await buildKvCacheKey(localCacheKey);
+	assert.equal(new TextEncoder().encode(kvCacheKey).byteLength < 512, true);
+	assert.match(kvCacheKey, /^ig-feed:v1:[a-f0-9]{64}$/);
+});
+
+test("KV hits preserve the original expiry for browser and L1 caching", async () => {
+	const localCacheKey = buildCacheKey("underwater", "1", "v23.0");
+	const kvCacheKey = await buildKvCacheKey(localCacheKey);
+	const kv = createKvMock({
+		initial: {
+			[kvCacheKey]: cacheEnvelope({ data: [{ id: "cached-post" }] }, 120),
+		},
+	});
+
+	await withWorkerMocks(
+		async () => {
+			throw new Error("Graph API must not be called for a KV hit");
+		},
+		async (capture) => {
+			const response = await worker.fetch(
+				new Request("https://worker.test/underwater"),
+				{ ...readyEnv, IG_FEED_CACHE: kv.namespace },
+			);
+			const maxAge = Number.parseInt(
+				response.headers.get("Cache-Control")?.match(/max-age=(\d+)/)?.[1] ??
+					"0",
+				10,
+			);
+			assert.equal(maxAge > 0 && maxAge <= 120, true);
+			assert.equal(capture.puts.length, 1);
+			const l1MaxAge = Number.parseInt(
+				capture.puts[0].cacheControl?.match(/max-age=(\d+)/)?.[1] ?? "0",
+				10,
+			);
+			assert.equal(l1MaxAge, maxAge);
+		},
+	);
+});
+
+test("corrupt KV values fall through to Graph instead of suppressing the feed", async () => {
+	const localCacheKey = buildCacheKey("underwater", "1", "v23.0");
+	const kvCacheKey = await buildKvCacheKey(localCacheKey);
+	const invalidValues: unknown[] = [
+		"not-an-envelope",
+		{
+			version: 1,
+			expiresAt: Date.now() + 3600_000,
+			body: { data: "not-an-array" },
+		},
+		cacheEnvelope({ data: [], paging: { next: "malformed" } }),
+		cacheEnvelope({
+			data: [{ id: "post", access_token: "must-not-be-served" }],
+		}),
+	];
+
+	for (const invalidValue of invalidValues) {
+		const kv = createKvMock({
+			initial: { [kvCacheKey]: invalidValue },
+		});
+		let upstreamCalls = 0;
+		await withWorkerMocks(
+			async () => {
+				upstreamCalls += 1;
+				return upstreamPage([{ id: "fresh-post" }]);
+			},
+			async () => {
+				const response = await worker.fetch(
+					new Request("https://worker.test/underwater"),
+					{ ...readyEnv, IG_FEED_CACHE: kv.namespace },
+				);
+				const body = (await response.json()) as {
+					data: Array<{ id: string }>;
+				};
+				assert.equal(response.status, 200);
+				assert.equal(upstreamCalls, 2);
+				assert.deepEqual(
+					body.data.map(({ id }) => id),
+					["fresh-post"],
+				);
+				assert.equal(
+					JSON.stringify(body).includes("must-not-be-served"),
+					false,
+				);
+			},
+		);
+	}
+});
+
+test("corrupt L1 values fall through to a valid global KV entry", async () => {
+	const localCacheKey = buildCacheKey("underwater", "1", "v23.0");
+	const kvCacheKey = await buildKvCacheKey(localCacheKey);
+	const kv = createKvMock({
+		initial: {
+			[kvCacheKey]: cacheEnvelope({ data: [{ id: "global-post" }] }),
+		},
+	});
+	let upstreamCalls = 0;
+
+	await withWorkerMocks(
+		async () => {
+			upstreamCalls += 1;
+			throw new Error("Graph API must not be called for a valid KV hit");
+		},
+		async () => {
+			const response = await worker.fetch(
+				new Request("https://worker.test/underwater"),
+				{ ...readyEnv, IG_FEED_CACHE: kv.namespace },
+			);
+			assert.equal(response.status, 200);
+			assert.deepEqual(await response.json(), {
+				data: [{ id: "global-post" }],
+			});
+			assert.equal(upstreamCalls, 0);
+			assert.deepEqual(kv.capture.gets, [kvCacheKey]);
+		},
+		{ localCacheValue: { malformed: true } },
+	);
+});
+
+test("successful cache miss writes a sanitized page to KV for one hour", async () => {
+	const kv = createKvMock();
+
+	await withWorkerMocks(
+		async (input) => {
+			const url = requestPath(input);
+			return upstreamPage(
+				[{ id: url.pathname.endsWith("/media") ? "owned" : "collab" }],
+				"next-page",
+			);
+		},
+		async () => {
+			const response = await worker.fetch(
+				new Request("https://worker.test/underwater"),
+				{ ...readyEnv, IG_FEED_CACHE: kv.namespace },
+			);
+			assert.equal(response.status, 200);
+			assert.equal(kv.capture.puts.length, 1);
+			assert.equal(kv.capture.puts[0].expirationTtl, 3600);
+			assert.equal(
+				new TextEncoder().encode(kv.capture.puts[0].key).byteLength < 512,
+				true,
+			);
+			assert.equal(kv.capture.puts[0].key.includes("secret"), false);
+			assert.equal(kv.capture.puts[0].value.includes("secret"), false);
+			assert.equal(kv.capture.puts[0].value.includes("must-not-leak"), false);
+			assert.equal(
+				kv.capture.puts[0].value.includes("graph.instagram.com/next"),
+				false,
+			);
+			const stored = JSON.parse(kv.capture.puts[0].value) as {
+				version: number;
+				expiresAt: number;
+				body: { data: Array<{ id: string }> };
+			};
+			assert.equal(stored.version, 1);
+			assert.equal(stored.expiresAt > Date.now(), true);
+			assert.deepEqual(stored.body.data.map(({ id }) => id).sort(), [
+				"collab",
+				"owned",
+			]);
+		},
+	);
+});
+
+test("KV read and write failures never take down a healthy feed request", async () => {
+	for (const failure of ["read", "write"] as const) {
+		const kv = createKvMock({
+			...(failure === "read"
+				? { readError: new Error("read failed") }
+				: { writeError: new Error("write failed") }),
+		});
+
+		await withWorkerMocks(
+			async () => upstreamPage([]),
+			async () => {
+				const response = await worker.fetch(
+					new Request("https://worker.test/underwater"),
+					{ ...readyEnv, IG_FEED_CACHE: kv.namespace },
+				);
+				assert.equal(response.status, 200, `${failure} failure`);
+				assert.deepEqual(await response.json(), { data: [] });
+				assert.equal(kv.capture.gets.length, 1);
+				assert.equal(kv.capture.puts.length, 1);
+			},
+		);
+	}
+});
+
+test("production ExecutionContext keeps cache writes off the response path", async () => {
+	let releaseWrite: (() => void) | undefined;
+	const writeGate = new Promise<void>((resolve) => {
+		releaseWrite = resolve;
+	});
+	const kv = createKvMock({ writeGate });
+	const scheduled: Promise<unknown>[] = [];
+	const ctx = {
+		waitUntil(promise: Promise<unknown>) {
+			scheduled.push(promise);
+		},
+	} as ExecutionContext;
+
+	await withWorkerMocks(
+		async () => upstreamPage([]),
+		async () => {
+			const response = await worker.fetch(
+				new Request("https://worker.test/underwater"),
+				{ ...readyEnv, IG_FEED_CACHE: kv.namespace },
+				ctx,
+			);
+			assert.equal(response.status, 200);
+			assert.equal(scheduled.length, 1);
+
+			let cacheWorkSettled = false;
+			const settlementProbe = scheduled[0].then(() => {
+				cacheWorkSettled = true;
+			});
+			await Promise.resolve();
+			assert.equal(cacheWorkSettled, false);
+
+			releaseWrite?.();
+			await scheduled[0];
+			await settlementProbe;
+			assert.equal(cacheWorkSettled, true);
+			assert.equal(kv.capture.puts.length, 1);
+		},
+	);
+});
+
+test("degraded and provider-fallback responses are not written to KV", async () => {
+	const degradedKv = createKvMock();
+	await withWorkerMocks(
+		async (input) => {
+			const url = requestPath(input);
+			return url.pathname.endsWith("/collaborative_media")
+				? new Response(null, { status: 503 })
+				: upstreamPage([{ id: "owned" }]);
+		},
+		async () => {
+			const response = await worker.fetch(
+				new Request("https://worker.test/underwater"),
+				{ ...readyEnv, IG_FEED_CACHE: degradedKv.namespace },
+			);
+			assert.equal(response.status, 200);
+			assert.equal(response.headers.get("Cache-Control"), "no-store");
+			assert.equal(degradedKv.capture.puts.length, 0);
+		},
+	);
+
+	const fallbackKv = createKvMock();
+	await withWorkerMocks(
+		async (input) => {
+			const url = requestPath(input);
+			if (
+				url.hostname === "graph.facebook.com" &&
+				url.pathname.endsWith("/media")
+			) {
+				return new Response(null, { status: 503 });
+			}
+			return upstreamPage([{ id: "available" }]);
+		},
+		async () => {
+			const response = await worker.fetch(
+				new Request("https://worker.test/portraits"),
+				{ ...readyEnv, IG_FEED_CACHE: fallbackKv.namespace },
+			);
+			assert.equal(response.status, 200);
+			assert.equal(response.headers.get("Cache-Control"), "no-store");
+			assert.equal(fallbackKv.capture.puts.length, 0);
+		},
+	);
+});
+
+test("each composite pagination cursor uses a distinct KV key", async () => {
+	const kv = createKvMock();
+	await withWorkerMocks(
+		async (input) => {
+			const url = requestPath(input);
+			return url.searchParams.get("after")
+				? upstreamPage([{ id: "page-2" }])
+				: upstreamPage([{ id: "page-1" }], "after-1");
+		},
+		async () => {
+			const first = await worker.fetch(
+				new Request("https://worker.test/underwater"),
+				{ ...readyEnv, IG_FEED_CACHE: kv.namespace },
+			);
+			const firstBody = (await first.json()) as {
+				paging: { next: string };
+			};
+			const secondUrl = new URL("https://worker.test/underwater");
+			secondUrl.searchParams.set("cursor", firstBody.paging.next);
+			const second = await worker.fetch(new Request(secondUrl), {
+				...readyEnv,
+				IG_FEED_CACHE: kv.namespace,
+			});
+			assert.equal(second.status, 200);
+			assert.equal(kv.capture.puts.length, 2);
+			assert.notEqual(kv.capture.puts[0].key, kv.capture.puts[1].key);
+		},
+	);
+});
 
 function compositeCursor(
 	ownedMediaProvider: "facebook" | "instagram",
@@ -298,9 +713,9 @@ test("portraits use one Facebook token for owned and collaborative Graph request
 				data: [{ id: "collaborative" }, { id: "owned" }],
 			});
 			assert.deepEqual(
-				calls.map(({ host, path }) => ({ host, path })).sort((left, right) =>
-					left.path.localeCompare(right.path),
-				),
+				calls
+					.map(({ host, path }) => ({ host, path }))
+					.sort((left, right) => left.path.localeCompare(right.path)),
 				[
 					{
 						host: "graph.facebook.com",
@@ -352,10 +767,10 @@ test("portrait owned fallback stays on Instagram for the full cursor chain", asy
 				data: Array<{ id: string }>;
 				paging: { next: string };
 			};
-			assert.deepEqual(
-				firstBody.data.map(({ id }) => id).sort(),
-				["collaborative", "owned-1"],
-			);
+			assert.deepEqual(firstBody.data.map(({ id }) => id).sort(), [
+				"collaborative",
+				"owned-1",
+			]);
 			const firstCursor = decodeCompositeCursor(firstBody.paging.next);
 			assert.equal(firstCursor?.ownedMediaProvider, "instagram");
 			assert.equal(firstCursor?.media.after, "instagram-next");
@@ -400,7 +815,10 @@ test("later Facebook pages fail without crossing providers", async () => {
 		},
 		async () => {
 			const url = new URL("https://worker.test/portraits");
-			url.searchParams.set("cursor", compositeCursor("facebook", "facebook-next"));
+			url.searchParams.set(
+				"cursor",
+				compositeCursor("facebook", "facebook-next"),
+			);
 			const response = await worker.fetch(new Request(url), readyEnv);
 			assert.equal(response.status, 502);
 			assert.equal(

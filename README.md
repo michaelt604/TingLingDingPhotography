@@ -133,7 +133,14 @@ from the page. Done in 5 min, but it's a subscription.
 This is what's already wired up. The static site calls
 `${NEXT_PUBLIC_IG_PROXY_URL}/underwater` and `/portraits`, and the
 Worker holds the access token server-side, fetches from the Graph API,
-caches at the edge for 1 hour, and returns CORS-safe JSON.
+caches complete feed pages in a globally shared Workers KV namespace
+for 1 hour, and returns CORS-safe JSON. Pagination pages use independent
+cache keys. The Cache API remains a best-effort local L1, but KV is the
+shared cache that prevents each new visitor from independently calling
+Instagram. Cold requests from multiple Cloudflare locations can still
+overlap while KV changes propagate, which can take up to about a minute
+worldwide. Cached entries retain their original expiry when promoted
+between KV, the local L1, and browser caching.
 
 **What you need to do** (one-time, ~1-2 hours):
 
@@ -180,6 +187,10 @@ caches at the edge for 1 hour, and returns CORS-safe JSON.
    npm run deploy --workspace=ig-proxy
    ```
    Worker access tokens remain in the existing Cloudflare secret bindings and are never placed in Pages or GitHub build variables.
+   The production `IG_FEED_CACHE` Workers KV namespace is bound in
+   `wrangler.toml`. Only complete owned + collaborator responses are
+   stored; degraded or fallback responses remain `no-store` and do not
+   replace a healthy shared snapshot.
 
    The Worker's CORS allowlist (`ALLOWED_ORIGIN` in `workers/ig-proxy/wrangler.toml`) is a comma-separated HTTPS allowlist that includes both live production origins — `https://tinglingdingphotography.com` and `https://www.tinglingdingphotography.com`. Both hosts return 200 directly (www does not redirect to apex), so requests from either are accepted; the apex and www variants are matched exactly and lookalike origins are rejected.
 

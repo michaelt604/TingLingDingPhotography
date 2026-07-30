@@ -21,9 +21,10 @@
  *   alphabet, length-bounded) so it cannot be abused to inject a new URL
  *   or leak the upstream access token.
  *
- * Caches successful feed responses at the Cloudflare edge for 1 hour
- * so we don't hit the Graph API on every page load. Cache keys include
- * the cursor so paginated responses are cached independently.
+ * Caches successful feed responses for 1 hour in a globally shared
+ * Workers KV namespace, with the Cache API retained as an optional
+ * per-colo L1. Cache keys include the cursor so paginated responses
+ * are cached independently.
  *
  * ──────────────────────────────────────────────────────────────────
  *  DEPLOY
@@ -55,9 +56,11 @@
  *     keys, or access logs.
  *   - The cache key is a stable internal URL
  *     (`https://ig-cache/${version}/${userId}/${side}/${cursor}`) —
- *     it never contains the token. The cursor is included only when
- *     the caller passed one, so paginated responses are cached
- *     independently while the token stays out of every key.
+ *     it never contains the token. Cache API L1 uses that URL directly;
+ *     Workers KV uses a fixed-length SHA-256 digest of it so maximum-size
+ *     pagination cursors remain below KV's key limit. The cursor is
+ *     included only when the caller passed one, so paginated responses
+ *     are cached independently while the token stays out of every key.
  *   - The `paging.next` field in our response is the upstream
  *     `paging.cursors.after` value — never the upstream URL, which
  *     would embed the access token. Incoming `cursor` query params
@@ -79,9 +82,10 @@
  *     no-store`. Non-browser requests (no Origin header) continue
  *     working and use a deterministic single configured origin for
  *     any CORS response header.
- *   - `caches.default` is zone-wide; cached bodies are shared across
- *     origins. We re-apply CORS in jsonResponse() so the cached
- *     response is still origin-aware.
+ *   - `IG_FEED_CACHE` is a globally shared, eventually consistent KV
+ *     namespace. `caches.default` is only an optional local L1 and may
+ *     be ineffective on a workers.dev deployment. We re-apply CORS in
+ *     jsonResponse() so every cached response remains origin-aware.
  */
 
 export interface Env {
@@ -101,9 +105,17 @@ export interface Env {
 	 */
 	ALLOWED_ORIGIN?: string;
 	GRAPH_API_VERSION?: string;
+	/**
+	 * Globally shared cache for complete feed pages. Optional so a missing
+	 * binding or local test configuration bypasses KV instead of taking the
+	 * feed offline.
+	 */
+	IG_FEED_CACHE?: KVNamespace;
 }
 
 const CACHE_TTL_SECONDS = 3600;
+const KV_READ_CACHE_TTL_SECONDS = 60;
+const CACHE_ENVELOPE_VERSION = 1;
 export const DEFAULT_GRAPH_API_VERSION = "v25.0";
 
 const CORS = (origin: string) => ({
@@ -571,6 +583,305 @@ export function buildCacheKey(
 	return new Request(`https://ig-cache.local/${path}`, { method: "GET" });
 }
 
+export async function buildKvCacheKey(cacheKey: Request): Promise<string> {
+	const digest = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(cacheKey.url),
+	);
+	const hex = Array.from(new Uint8Array(digest), (byte) =>
+		byte.toString(16).padStart(2, "0"),
+	).join("");
+	return `ig-feed:v${CACHE_ENVELOPE_VERSION}:${hex}`;
+}
+
+interface CacheEnvelope {
+	version: typeof CACHE_ENVELOPE_VERSION;
+	expiresAt: number;
+	body: Record<string, unknown>;
+}
+
+interface CacheHit {
+	envelope: CacheEnvelope;
+	remainingTtl: number;
+}
+
+const CACHE_POST_KEYS = new Set([
+	"id",
+	"media_type",
+	"media_url",
+	"permalink",
+	"thumbnail_url",
+	"caption",
+	"timestamp",
+	"children",
+]);
+const CACHE_CHILD_KEYS = new Set([
+	"id",
+	"media_type",
+	"media_url",
+	"permalink",
+	"thumbnail_url",
+]);
+const CACHE_MEDIA_TYPES = new Set(["IMAGE", "VIDEO", "CAROUSEL_ALBUM"]);
+
+function sanitizeCachedChild(value: unknown): Record<string, unknown> | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const child = value as Record<string, unknown>;
+	if (Object.keys(child).some((key) => !CACHE_CHILD_KEYS.has(key))) return null;
+	if (typeof child.id !== "string" || child.id.length === 0) return null;
+	if (
+		child.media_type !== undefined &&
+		(typeof child.media_type !== "string" ||
+			!CHILD_MEDIA_TYPES.has(child.media_type))
+	) {
+		return null;
+	}
+	if (
+		child.media_url !== undefined &&
+		(typeof child.media_url !== "string" ||
+			!isInstagramMediaHttpsUrl(child.media_url))
+	) {
+		return null;
+	}
+	if (
+		child.thumbnail_url !== undefined &&
+		(typeof child.thumbnail_url !== "string" ||
+			!isInstagramMediaHttpsUrl(child.thumbnail_url))
+	) {
+		return null;
+	}
+	if (
+		child.permalink !== undefined &&
+		(typeof child.permalink !== "string" ||
+			!isInstagramHttpsUrl(child.permalink))
+	) {
+		return null;
+	}
+	return { ...child };
+}
+
+function sanitizeCachedPost(value: unknown): Record<string, unknown> | null {
+	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+	const post = value as Record<string, unknown>;
+	if (Object.keys(post).some((key) => !CACHE_POST_KEYS.has(key))) return null;
+	if (typeof post.id !== "string" || post.id.length === 0) return null;
+	if (
+		post.media_type !== undefined &&
+		(typeof post.media_type !== "string" ||
+			!CACHE_MEDIA_TYPES.has(post.media_type))
+	) {
+		return null;
+	}
+	if (
+		post.media_url !== undefined &&
+		(typeof post.media_url !== "string" ||
+			!isInstagramMediaHttpsUrl(post.media_url))
+	) {
+		return null;
+	}
+	if (
+		post.permalink !== undefined &&
+		(typeof post.permalink !== "string" || !isInstagramHttpsUrl(post.permalink))
+	) {
+		return null;
+	}
+	if (
+		post.thumbnail_url !== undefined &&
+		(typeof post.thumbnail_url !== "string" ||
+			!isInstagramMediaHttpsUrl(post.thumbnail_url))
+	) {
+		return null;
+	}
+	if (post.caption !== undefined && typeof post.caption !== "string")
+		return null;
+	if (post.timestamp !== undefined && typeof post.timestamp !== "string")
+		return null;
+
+	let children: Record<string, unknown>[] | undefined;
+	if (post.children !== undefined) {
+		if (!Array.isArray(post.children)) return null;
+		children = [];
+		for (const child of post.children) {
+			const sanitized = sanitizeCachedChild(child);
+			if (!sanitized) return null;
+			children.push(sanitized);
+		}
+	}
+	return children ? { ...post, children } : { ...post };
+}
+
+function sanitizeCacheBody(payload: unknown): Record<string, unknown> | null {
+	if (!payload || typeof payload !== "object" || Array.isArray(payload))
+		return null;
+	const candidate = payload as Record<string, unknown>;
+	const keys = Object.keys(candidate);
+	if (
+		keys.some((key) => key !== "data" && key !== "paging") ||
+		!Array.isArray(candidate.data)
+	) {
+		return null;
+	}
+
+	const data: Record<string, unknown>[] = [];
+	for (const post of candidate.data) {
+		const sanitized = sanitizeCachedPost(post);
+		if (!sanitized) return null;
+		data.push(sanitized);
+	}
+
+	if (candidate.paging === undefined) return { data };
+	if (
+		!candidate.paging ||
+		typeof candidate.paging !== "object" ||
+		Array.isArray(candidate.paging)
+	) {
+		return null;
+	}
+	const paging = candidate.paging as Record<string, unknown>;
+	if (
+		Object.keys(paging).length !== 1 ||
+		!("next" in paging) ||
+		!decodeCompositeCursor(paging.next)
+	) {
+		return null;
+	}
+	return { data, paging: { next: paging.next } };
+}
+
+function createCacheEnvelope(
+	responseBody: Record<string, unknown>,
+): CacheEnvelope | null {
+	const body = sanitizeCacheBody(responseBody);
+	if (!body) return null;
+	return {
+		version: CACHE_ENVELOPE_VERSION,
+		expiresAt: Date.now() + CACHE_TTL_SECONDS * 1000,
+		body,
+	};
+}
+
+function parseCacheEnvelope(payload: unknown): CacheHit | null {
+	if (!payload || typeof payload !== "object" || Array.isArray(payload))
+		return null;
+	const candidate = payload as Record<string, unknown>;
+	if (
+		Object.keys(candidate).sort().join(",") !== "body,expiresAt,version" ||
+		candidate.version !== CACHE_ENVELOPE_VERSION ||
+		typeof candidate.expiresAt !== "number" ||
+		!Number.isFinite(candidate.expiresAt)
+	) {
+		return null;
+	}
+	const body = sanitizeCacheBody(candidate.body);
+	if (!body) return null;
+	const remainingTtl = Math.min(
+		CACHE_TTL_SECONDS,
+		Math.floor((candidate.expiresAt - Date.now()) / 1000),
+	);
+	if (remainingTtl <= 0) return null;
+	return {
+		envelope: {
+			version: CACHE_ENVELOPE_VERSION,
+			expiresAt: candidate.expiresAt,
+			body,
+		},
+		remainingTtl,
+	};
+}
+
+function logCacheFailure(
+	operation: "l1-read" | "l1-write" | "kv-read" | "kv-write",
+	error: unknown,
+): void {
+	console.error("Instagram feed cache operation failed", {
+		operation,
+		error: error instanceof Error ? error.name : "UnknownError",
+	});
+}
+
+async function readLocalCache(cacheKey: Request): Promise<unknown | null> {
+	try {
+		const cached = await caches.default.match(cacheKey);
+		return cached ? await cached.json() : null;
+	} catch (error) {
+		logCacheFailure("l1-read", error);
+		return null;
+	}
+}
+
+async function readGlobalCache(
+	namespace: KVNamespace | undefined,
+	kvCacheKey: string,
+): Promise<unknown | null> {
+	if (!namespace) return null;
+	try {
+		return await namespace.get<unknown>(kvCacheKey, {
+			type: "json",
+			cacheTtl: KV_READ_CACHE_TTL_SECONDS,
+		});
+	} catch (error) {
+		logCacheFailure("kv-read", error);
+		return null;
+	}
+}
+
+async function writeLocalCache(
+	cacheKey: Request,
+	envelope: CacheEnvelope,
+	ttl: number,
+): Promise<void> {
+	try {
+		await caches.default.put(
+			cacheKey,
+			new Response(JSON.stringify(envelope), {
+				headers: {
+					"Cache-Control": `public, max-age=${ttl}`,
+				},
+			}),
+		);
+	} catch (error) {
+		logCacheFailure("l1-write", error);
+	}
+}
+
+async function writeGlobalCache(
+	namespace: KVNamespace | undefined,
+	kvCacheKey: string,
+	envelope: CacheEnvelope,
+): Promise<void> {
+	if (!namespace) return;
+	try {
+		await namespace.put(kvCacheKey, JSON.stringify(envelope), {
+			expirationTtl: CACHE_TTL_SECONDS,
+		});
+	} catch (error) {
+		logCacheFailure("kv-write", error);
+	}
+}
+
+async function persistCaches(
+	namespace: KVNamespace | undefined,
+	cacheKey: Request,
+	kvCacheKey: string,
+	envelope: CacheEnvelope,
+): Promise<void> {
+	await Promise.all([
+		writeLocalCache(cacheKey, envelope, CACHE_TTL_SECONDS),
+		writeGlobalCache(namespace, kvCacheKey, envelope),
+	]);
+}
+
+async function scheduleCacheWork(
+	ctx: ExecutionContext | undefined,
+	work: Promise<void>,
+): Promise<void> {
+	if (ctx) {
+		ctx.waitUntil(work);
+		return;
+	}
+	await work;
+}
+
 // Strips any `paging.next` URL from an upstream Graph API payload and
 // returns a sanitized object whose `paging.next` field is the opaque
 // cursor token only. Returns undefined when the payload has no paging
@@ -713,20 +1024,12 @@ function mergeMediaPosts(
 		});
 }
 
-function responseBodyFromCache(payload: unknown): Record<string, unknown> {
-	if (!payload || typeof payload !== "object" || Array.isArray(payload))
-		return { data: [] };
-	const candidate = payload as Record<string, unknown>;
-	const data = Array.isArray(candidate.data) ? candidate.data : [];
-	const paging = candidate.paging;
-	if (!paging || typeof paging !== "object" || Array.isArray(paging))
-		return { data };
-	const next = (paging as Record<string, unknown>).next;
-	return decodeCompositeCursor(next) ? { data, paging: { next } } : { data };
-}
-
 export default {
-	async fetch(request: Request, env: Env): Promise<Response> {
+	async fetch(
+		request: Request,
+		env: Env,
+		ctx?: ExecutionContext,
+	): Promise<Response> {
 		const allowlist = resolveAllowlist(env);
 		const graphApiVersion = resolveGraphApiVersion(env);
 		const nonBrowserOrigin = allowlist ? allowlist[0] : null;
@@ -819,11 +1122,9 @@ export default {
 			const decoded = decodeCompositeCursor(rawCursor);
 			if (
 				!decoded ||
-				(side !== "portraits" &&
-					decoded.ownedMediaProvider !== "instagram") ||
+				(side !== "portraits" && decoded.ownedMediaProvider !== "instagram") ||
 				(decoded.ownedMediaProvider === "facebook" &&
-					(!route.collaborative.userId ||
-						!route.collaborative.accessToken))
+					(!route.collaborative.userId || !route.collaborative.accessToken))
 			) {
 				return errorResponse("Invalid cursor.", effectiveOrigin, 400);
 			}
@@ -838,12 +1139,30 @@ export default {
 		);
 
 		try {
-			const cache = caches.default;
-			const cached = await cache.match(cacheKey);
-			if (cached) {
+			const localCached = await readLocalCache(cacheKey);
+			const localHit = parseCacheEnvelope(localCached);
+			if (localHit) {
 				return jsonResponse(
-					responseBodyFromCache(await cached.json()),
+					localHit.envelope.body,
 					effectiveOrigin,
+					200,
+					`public, max-age=${localHit.remainingTtl}`,
+				);
+			}
+
+			const kvCacheKey = await buildKvCacheKey(cacheKey);
+			const globalCached = await readGlobalCache(env.IG_FEED_CACHE, kvCacheKey);
+			const globalHit = parseCacheEnvelope(globalCached);
+			if (globalHit) {
+				await scheduleCacheWork(
+					ctx,
+					writeLocalCache(cacheKey, globalHit.envelope, globalHit.remainingTtl),
+				);
+				return jsonResponse(
+					globalHit.envelope.body,
+					effectiveOrigin,
+					200,
+					`public, max-age=${globalHit.remainingTtl}`,
 				);
 			}
 
@@ -959,20 +1278,18 @@ export default {
 					}
 				: { data: augmentedPosts };
 			const collaborativeDegraded =
-				!collaborativeConfigured ||
-				collaborativeResult.outcome === "failure";
+				!collaborativeConfigured || collaborativeResult.outcome === "failure";
 			if (collaborativeDegraded || ownedFallbackUsed) {
-				return jsonResponse(
-					responseBody,
-					effectiveOrigin,
-					200,
-					"no-store",
-				);
+				return jsonResponse(responseBody, effectiveOrigin, 200, "no-store");
 			}
-			const cacheable = new Response(JSON.stringify(responseBody), {
-				headers: { "Cache-Control": `public, max-age=${CACHE_TTL_SECONDS}` },
-			});
-			await cache.put(cacheKey, cacheable.clone());
+			const cacheEnvelope = createCacheEnvelope(responseBody);
+			if (!cacheEnvelope) {
+				return jsonResponse(responseBody, effectiveOrigin, 200, "no-store");
+			}
+			await scheduleCacheWork(
+				ctx,
+				persistCaches(env.IG_FEED_CACHE, cacheKey, kvCacheKey, cacheEnvelope),
+			);
 			return jsonResponse(responseBody, effectiveOrigin);
 		} catch (error) {
 			console.error(

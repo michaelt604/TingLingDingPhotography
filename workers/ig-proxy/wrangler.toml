@@ -7,6 +7,10 @@ compatibility_flags = ["nodejs_compat"]
 ALLOWED_ORIGIN = "https://tinglingdingphotography.com,https://www.tinglingdingphotography.com"
 GRAPH_API_VERSION = "v25.0"
 
+[[kv_namespaces]]
+binding = "IG_FEED_CACHE"
+id = "4a4fd8b71cb74d348b3c71e08d83b992"
+
 # Secrets (set these with `wrangler secret put`):
 #   IG_USER_ID_UNDERWATER
 #   IG_ACCESS_TOKEN_UNDERWATER
