@@ -1,7 +1,6 @@
 name = "ig-proxy"
 main = "src/index.ts"
 compatibility_date = "2024-09-23"
-compatibility_flags = ["nodejs_compat"]
 
 [vars]
 ALLOWED_ORIGIN = "https://tinglingdingphotography.com,https://www.tinglingdingphotography.com"
@@ -11,32 +10,14 @@ GRAPH_API_VERSION = "v25.0"
 binding = "IG_FEED_CACHE"
 id = "4a4fd8b71cb74d348b3c71e08d83b992"
 
-# Secrets (set these with `wrangler secret put`):
-#   IG_USER_ID_UNDERWATER
+# Required secrets:
+#   IG_COLLAB_USER_ID_UNDERWATER (Facebook-host IG ID)
 #   IG_ACCESS_TOKEN_UNDERWATER
-#   IG_USER_ID_PORTRAITS
+#   IG_COLLAB_USER_ID_PORTRAITS (Facebook-host IG ID)
 #   IG_ACCESS_TOKEN_PORTRAITS
-#   IG_COLLAB_USER_ID_UNDERWATER
-#   IG_COLLAB_ACCESS_TOKEN_UNDERWATER
-#   IG_COLLAB_USER_ID_PORTRAITS
-#   IG_COLLAB_ACCESS_TOKEN_PORTRAITS (Facebook Graph token; primary for both
-#     portrait /media and /collaborative_media. Requires instagram_basic,
-#     pages_show_list, and pages_read_engagement.)
 #
-# IG_ACCESS_TOKEN_PORTRAITS remains the graph.instagram.com owned-media
-# fallback when the Facebook Graph request is temporarily unavailable.
-#
-# Example:
-#   wrangler secret put IG_USER_ID_UNDERWATER
-#   wrangler secret put IG_ACCESS_TOKEN_UNDERWATER
-#   wrangler secret put IG_USER_ID_PORTRAITS
-#   wrangler secret put IG_ACCESS_TOKEN_PORTRAITS
-#   wrangler secret put IG_COLLAB_USER_ID_UNDERWATER
-#   wrangler secret put IG_COLLAB_ACCESS_TOKEN_UNDERWATER
-#   wrangler secret put IG_COLLAB_USER_ID_PORTRAITS
-#   wrangler secret put IG_COLLAB_ACCESS_TOKEN_PORTRAITS
-#
-# Then: wrangler deploy
+# Each Page/System User token serves both /media and /collaborative_media for
+# its account through graph.facebook.com.
 
 # Production environment — locks CORS to the real site origin so the
 # proxy can't be abused from arbitrary origins (which would burn the

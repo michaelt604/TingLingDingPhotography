@@ -161,26 +161,26 @@ between KV, the local L1, and browser caching.
    you Graph API access — *not* the old "Instagram Basic Display" which
    is dead).
 
-4. **Get the user IDs.** Visit
-   `https://graph.instagram.com/v25.0/me?fields=id&access_token=SHORT_TOKEN`
-   for each account. Copy the numeric `id` field for each.
+4. **Get each Instagram professional-account ID.** With a token that can access
+   the linked Facebook Page, query the Page's `instagram_business_account` and
+   copy its numeric `id`. The current deployment stores these Facebook-scoped
+   IDs as `IG_COLLAB_USER_ID_UNDERWATER` and `IG_COLLAB_USER_ID_PORTRAITS`;
+   those historical names are ID aliases, not additional access tokens.
 
-5. **Generate a long-lived access token** for each account:
-   ```bash
-   # Get a short-lived token via the Graph API Explorer first
-   # (https://developers.facebook.com/tools/explorer/)
-   # Then exchange it for a 60-day long-lived token:
-   curl -X GET \
-     "https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=APP_SECRET&access_token=SHORT_TOKEN"
-   ```
-   Do this twice — once per IG account, using the matching token.
+5. **Generate one Facebook Page/System User token per account.** In Meta
+   Business Settings, create or use a System User, assign the app plus the
+   matching Page and Instagram assets, and generate a token with the longest
+   lifetime Meta permits. Each token needs `instagram_basic`, `pages_show_list`,
+   and `pages_read_engagement`, and must be able to read both
+   `/{ig-user-id}/media` and `/{ig-user-id}/collaborative_media` on
+   `graph.facebook.com`.
 
-   Portraits also uses a Facebook Graph user/page token with
-   `instagram_basic`, `pages_show_list`, and `pages_read_engagement`. Store it
-   as `IG_COLLAB_ACCESS_TOKEN_PORTRAITS`. The Worker uses that one Facebook
-   token for both the portrait account's `/media` and `/collaborative_media`
-   edges. `IG_ACCESS_TOKEN_PORTRAITS` remains an owned-media fallback through
-   `graph.instagram.com`; it is never used for collaborator requests.
+   Store the underwater credential in `IG_ACCESS_TOKEN_UNDERWATER` and the
+   portrait credential in `IG_ACCESS_TOKEN_PORTRAITS`. There are only two access
+   tokens: the Worker uses the matching account token for both feed edges. Do
+   not use Instagram Login tokens or `graph.instagram.com` for this flow. Meta's
+   maintained [Instagram API with Facebook Login documentation](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api)
+   describes the Page-token model and required permissions.
 
 6. **Deploy the Worker** (the code is already in `workers/ig-proxy/`). The public production Worker is `https://ig-proxy.michaelt604.workers.dev`. GitHub Actions deploys this Worker from the repository root before uploading the Pages artifact on pushes to `main`. For a manual deployment, use the existing workspace tooling:
    ```bash
@@ -188,9 +188,9 @@ between KV, the local L1, and browser caching.
    ```
    Worker access tokens remain in the existing Cloudflare secret bindings and are never placed in Pages or GitHub build variables.
    The production `IG_FEED_CACHE` Workers KV namespace is bound in
-   `wrangler.toml`. Only complete owned + collaborator responses are
-   stored; degraded or fallback responses remain `no-store` and do not
-   replace a healthy shared snapshot.
+   `wrangler.toml`. Only complete owned + collaborator responses are cached;
+   degraded responses remain `no-store` and do not replace a healthy shared
+   snapshot.
 
    The Worker's CORS allowlist (`ALLOWED_ORIGIN` in `workers/ig-proxy/wrangler.toml`) is a comma-separated HTTPS allowlist that includes both live production origins — `https://tinglingdingphotography.com` and `https://www.tinglingdingphotography.com`. Both hosts return 200 directly (www does not redirect to apex), so requests from either are accepted; the apex and www variants are matched exactly and lookalike origins are rejected.
 
@@ -200,7 +200,23 @@ between KV, the local L1, and browser caching.
 
 9. **Add Worker abuse controls in Cloudflare.** CORS prevents other browser origins from reading the response, but it is not authentication or rate limiting. Configure a Worker rate-limit/WAF rule and monitor Instagram API usage in the Cloudflare dashboard.
 
-**Deferred production work:** Instagram token renewal and real image/feed content are intentionally deferred. Do not put token or other credential values in this repository, Pages settings, or GitHub build variables.
+### Token recovery
+
+The Worker keeps one Page/System User token per account in Cloudflare secrets;
+tokens never enter KV. `/health` probes both accounts without exposing IDs or
+tokens. For a 401/error-190 outage, replace the two tokens and redeploy:
+
+```powershell
+npx wrangler secret put IG_ACCESS_TOKEN_UNDERWATER --config workers/ig-proxy/wrangler.toml
+npx wrangler secret put IG_ACCESS_TOKEN_PORTRAITS --config workers/ig-proxy/wrangler.toml
+npm run deploy --workspace=ig-proxy
+Invoke-RestMethod https://ig-proxy.michaelt604.workers.dev/health
+Invoke-RestMethod https://ig-proxy.michaelt604.workers.dev/underwater
+Invoke-RestMethod https://ig-proxy.michaelt604.workers.dev/portraits
+```
+
+Never place credential values in this repository, Pages settings, shell
+history, logs, GitHub variables, or chat.
 
 
 **Why this is the right answer:** zero ongoing cost, you own the
@@ -281,7 +297,7 @@ way to point it at Pages is to move DNS to Cloudflare.
 
 ### Environment variables
 
-The tracked `.env.production` sets `NEXT_PUBLIC_IG_PROXY_URL` to the public Worker at `https://ig-proxy.michaelt604.workers.dev`. GitHub Actions validates this exact HTTPS host before every production build. Worker access tokens remain existing Cloudflare Worker secrets and must never be placed in Pages, repository files, or GitHub build variables. To include posts where the account is a collaborator, also set `IG_COLLAB_USER_ID_UNDERWATER`, `IG_COLLAB_ACCESS_TOKEN_UNDERWATER`, `IG_COLLAB_USER_ID_PORTRAITS`, and `IG_COLLAB_ACCESS_TOKEN_PORTRAITS` on the Worker. The portrait collaborator token is the canonical Facebook Graph token for both portrait-owned and collaborator media and must include `instagram_basic`, `pages_show_list`, and `pages_read_engagement`. The existing portrait Instagram token is retained only as the owned-media fallback. No OAuth callback or KV token-exchange path is used.
+The tracked `.env.production` points to `https://ig-proxy.michaelt604.workers.dev`. The Worker stores two Page/System User tokens in `IG_ACCESS_TOKEN_*` and pairs them with the existing Facebook-scoped `IG_COLLAB_USER_ID_*` IDs (historical names; they are not extra tokens). Both feed edges use `graph.facebook.com`; there is no separate collaborator token or OAuth callback.
 
 
 ---
@@ -310,7 +326,7 @@ Most tweaks live in:
 
 - [ ] Real hero photos (swap from CSS placeholders)
 - [x] Pin and validate the production IG Worker URL
-- [ ] Renew Instagram tokens and add real image/feed content (deferred)
+- [x] Use two Page/System User tokens with dependency-aware health checks
 
 - [ ] Custom 404 page
 - [x] Non-photographic Open Graph fallback (`public/og-default.png`, sourced from the adjacent SVG)

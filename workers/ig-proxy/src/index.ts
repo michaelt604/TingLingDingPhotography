@@ -1,7 +1,7 @@
 /**
  * Cloudflare Worker — Instagram feed proxy
  *
- * Holds a long-lived Instagram Graph API access token server-side and
+ * Holds one Facebook Graph Page/System User access token per account server-side and
  * exposes a CORS-safe JSON endpoint the static site can call.
  *
  * Routes:
@@ -33,27 +33,22 @@
  *  2. Login:            wrangler login
  *  3. cd workers/ig-proxy
  *  4. Set secrets:      wrangler secret put IG_ACCESS_TOKEN_UNDERWATER
- *                       wrangler secret put IG_USER_ID_UNDERWATER
- *                       wrangler secret put IG_ACCESS_TOKEN_PORTRAITS
- *                       wrangler secret put IG_USER_ID_PORTRAITS
- *                       wrangler secret put IG_COLLAB_ACCESS_TOKEN_UNDERWATER
  *                       wrangler secret put IG_COLLAB_USER_ID_UNDERWATER
- *                       wrangler secret put IG_COLLAB_ACCESS_TOKEN_PORTRAITS
+ *                       wrangler secret put IG_ACCESS_TOKEN_PORTRAITS
  *                       wrangler secret put IG_COLLAB_USER_ID_PORTRAITS
  *  5. Deploy:           wrangler deploy
  *  6. Set NEXT_PUBLIC_IG_PROXY_URL in your Next.js env to the
  *     deployed worker URL (e.g. https://ig-proxy.<you>.workers.dev)
  * ──────────────────────────────────────────────────────────────────
  *
- * Token refresh: long-lived tokens last 60 days. Set a calendar
- * reminder; when one expires, /me?fields=id will return an error and
- * the feed will fall back to placeholder. Refresh by re-running the
- * short-lived → long-lived exchange in Graph API Explorer.
+ * Token lifecycle: both access tokens are Facebook-host Page/System User
+ * credentials with the Page/Instagram assets and permissions required for
+ * both /media and /collaborative_media. They are never sent to Instagram's
+ * incompatible ig_refresh_token endpoint.
  *
  * Security notes:
- *   - Access token is sent to Graph API via Authorization: Bearer
- *     header (NOT a query param), so it never appears in URLs, cache
- *     keys, or access logs.
+ *   - Feed access tokens are sent via Authorization: Bearer and never enter
+ *     feed URLs, cache keys, responses, or logs.
  *   - The cache key is a stable internal URL
  *     (`https://ig-cache/${version}/${userId}/${side}/${cursor}`) —
  *     it never contains the token. Cache API L1 uses that URL directly;
@@ -89,14 +84,12 @@
  */
 
 export interface Env {
-	IG_USER_ID_UNDERWATER: string;
 	IG_ACCESS_TOKEN_UNDERWATER: string;
-	IG_USER_ID_PORTRAITS: string;
 	IG_ACCESS_TOKEN_PORTRAITS: string;
-	IG_COLLAB_USER_ID_UNDERWATER?: string;
-	IG_COLLAB_ACCESS_TOKEN_UNDERWATER?: string;
-	IG_COLLAB_USER_ID_PORTRAITS?: string;
-	IG_COLLAB_ACCESS_TOKEN_PORTRAITS?: string;
+	/** Facebook-host Instagram ID; legacy binding name retained in Cloudflare. */
+	IG_COLLAB_USER_ID_UNDERWATER: string;
+	/** Facebook-host Instagram ID; legacy binding name retained in Cloudflare. */
+	IG_COLLAB_USER_ID_PORTRAITS: string;
 	/**
 	 * Comma-separated HTTPS allowlist. Each entry must be an HTTPS URL
 	 * with no credentials, no path beyond "/", no query, and no fragment.
@@ -116,6 +109,7 @@ export interface Env {
 const CACHE_TTL_SECONDS = 3600;
 const KV_READ_CACHE_TTL_SECONDS = 60;
 const CACHE_ENVELOPE_VERSION = 1;
+const GRAPH_API_HOST = "graph.facebook.com";
 export const DEFAULT_GRAPH_API_VERSION = "v25.0";
 
 const CORS = (origin: string) => ({
@@ -160,64 +154,30 @@ interface ApiCredentials {
 }
 
 interface FeedRoute {
-	owned: ApiCredentials;
-	collaborative: ApiCredentials;
+	credentials: ApiCredentials;
 }
 
-type OwnedMediaProvider = "facebook" | "instagram";
+type FeedSide = "underwater" | "portraits";
 
-function routeFor(path: string, env: Env): FeedRoute | null {
+function isFeedSide(value: string): value is FeedSide {
+	return value === "underwater" || value === "portraits";
+}
+
+function routeFor(path: FeedSide, env: Env): FeedRoute {
 	if (path === "underwater") {
 		return {
-			owned: {
-				userId: env.IG_USER_ID_UNDERWATER,
+			credentials: {
+				userId: env.IG_COLLAB_USER_ID_UNDERWATER,
 				accessToken: env.IG_ACCESS_TOKEN_UNDERWATER,
 			},
-			collaborative: {
-				userId: env.IG_COLLAB_USER_ID_UNDERWATER ?? "",
-				accessToken: env.IG_COLLAB_ACCESS_TOKEN_UNDERWATER ?? "",
-			},
 		};
 	}
-	if (path === "portraits") {
-		return {
-			owned: {
-				userId: env.IG_USER_ID_PORTRAITS,
-				accessToken: env.IG_ACCESS_TOKEN_PORTRAITS,
-			},
-			collaborative: {
-				userId: env.IG_COLLAB_USER_ID_PORTRAITS ?? "",
-				accessToken: env.IG_COLLAB_ACCESS_TOKEN_PORTRAITS ?? "",
-			},
-		};
-	}
-	return null;
-}
-
-function initialOwnedMediaProvider(
-	side: string,
-	route: FeedRoute,
-): OwnedMediaProvider {
-	return side === "portraits" &&
-		route.collaborative.userId &&
-		route.collaborative.accessToken
-		? "facebook"
-		: "instagram";
-}
-
-function ownedMediaSource(
-	route: FeedRoute,
-	provider: OwnedMediaProvider,
-): { credentials: ApiCredentials; graphApiHost: string } {
-	return provider === "facebook"
-		? {
-				credentials: route.collaborative,
-				graphApiHost: "graph.facebook.com",
-			}
-		: {
-				credentials: route.owned,
-				graphApiHost: "graph.instagram.com",
-			};
+	return {
+		credentials: {
+			userId: env.IG_COLLAB_USER_ID_PORTRAITS,
+			accessToken: env.IG_ACCESS_TOKEN_PORTRAITS,
+		},
+	};
 }
 
 const MEDIA_FIELDS =
@@ -286,7 +246,7 @@ function isInstagramHttpsUrl(value: string): boolean {
  * malformed — callers treat that as "no children, fall back to the
  * parent's `media_url`".
  */
-export function normalizeCarouselChildren(payload: unknown): unknown[] {
+function normalizeCarouselChildren(payload: unknown): unknown[] {
 	if (!payload || typeof payload !== "object") return [];
 	const data = (payload as { data?: unknown }).data;
 	if (!Array.isArray(data)) return [];
@@ -328,10 +288,9 @@ async function fetchCarouselChildren(
 	graphApiVersion: string,
 	parentId: string,
 	accessToken: string,
-	graphApiHost = "graph.instagram.com",
 ): Promise<unknown[]> {
 	const url =
-		`https://${graphApiHost}/${graphApiVersion}/${encodeURIComponent(parentId)}/children` +
+		`https://${GRAPH_API_HOST}/${graphApiVersion}/${encodeURIComponent(parentId)}/children` +
 		`?fields=${CHILDREN_FIELDS}&limit=10`;
 	try {
 		const response = await fetch(url, {
@@ -357,11 +316,10 @@ async function fetchCarouselChildren(
  * leave that post without `children` — the client falls back to the
  * parent's `media_url`.
  */
-export async function inlineCarouselChildren(
+async function inlineCarouselChildren(
 	graphApiVersion: string,
 	accessToken: string,
 	posts: Record<string, unknown>[],
-	graphApiHost = "graph.instagram.com",
 ): Promise<Record<string, unknown>[]> {
 	return Promise.all(
 		posts.map(async (post) => {
@@ -372,7 +330,6 @@ export async function inlineCarouselChildren(
 				graphApiVersion,
 				id,
 				accessToken,
-				graphApiHost,
 			);
 			return children.length > 0 ? { ...post, children } : post;
 		}),
@@ -439,7 +396,7 @@ export function resolveGraphApiVersion(env: Env): string | null {
 // Returns null when the value is empty, too long, or malformed.
 const MAX_CURSOR_LENGTH = 256;
 const MAX_CLIENT_CURSOR_LENGTH = 1024;
-const CACHE_SCHEMA_VERSION = "facebook-primary-v1";
+const CACHE_SCHEMA_VERSION = "facebook-two-token-v1";
 
 interface SourceCursorState {
 	after: string | null;
@@ -448,8 +405,7 @@ interface SourceCursorState {
 }
 
 interface CompositeCursor {
-	version: 2;
-	ownedMediaProvider: OwnedMediaProvider;
+	version: 3;
 	media: SourceCursorState;
 	collaborativeMedia: SourceCursorState;
 }
@@ -529,29 +485,17 @@ export function decodeCompositeCursor(value: unknown): CompositeCursor | null {
 			return null;
 		const candidate = parsed as Record<string, unknown>;
 		if (
-			!hasExactKeys(candidate, [
-				"version",
-				"ownedMediaProvider",
-				"media",
-				"collaborativeMedia",
-			])
+			!hasExactKeys(candidate, ["version", "media", "collaborativeMedia"])
 		)
 			return null;
-		if (candidate.version !== 2) return null;
-		if (
-			candidate.ownedMediaProvider !== "facebook" &&
-			candidate.ownedMediaProvider !== "instagram"
-		) {
-			return null;
-		}
+		if (candidate.version !== 3) return null;
 		const media = parseSourceCursorState(candidate.media);
 		const collaborativeMedia = parseSourceCursorState(
 			candidate.collaborativeMedia,
 		);
 		if (!media || !collaborativeMedia) return null;
 		const cursor: CompositeCursor = {
-			version: 2,
-			ownedMediaProvider: candidate.ownedMediaProvider,
+			version: 3,
 			media,
 			collaborativeMedia,
 		};
@@ -886,7 +830,7 @@ async function scheduleCacheWork(
 // returns a sanitized object whose `paging.next` field is the opaque
 // cursor token only. Returns undefined when the payload has no paging
 // block or the upstream cursor fails validation.
-export function sanitizePaging(
+function sanitizePaging(
 	payload: unknown,
 ): { next?: string } | undefined {
 	if (!payload || typeof payload !== "object") return undefined;
@@ -912,10 +856,9 @@ function buildMediaUrl(
 	userId: string,
 	endpoint: "media" | "collaborative_media",
 	after: string | null,
-	graphApiHost = "graph.instagram.com",
 ): URL {
 	const url = new URL(
-		`https://${graphApiHost}/${graphApiVersion}/${encodeURIComponent(userId)}/${endpoint}`,
+		`https://${GRAPH_API_HOST}/${graphApiVersion}/${encodeURIComponent(userId)}/${endpoint}`,
 	);
 	url.search = new URLSearchParams({
 		fields: MEDIA_FIELDS,
@@ -1024,6 +967,78 @@ function mergeMediaPosts(
 		});
 }
 
+interface FeedHealth {
+	ok: boolean;
+	collaborativeOk: boolean;
+}
+
+interface GraphHealth {
+	ok: boolean;
+	collaborativeReady: boolean;
+	version: string;
+	feeds: Record<FeedSide, FeedHealth>;
+}
+
+async function probeMedia(
+	graphApiVersion: string,
+	credentials: ApiCredentials,
+	endpoint: "media" | "collaborative_media",
+): Promise<boolean> {
+	if (!credentials.userId || !credentials.accessToken) return false;
+	const result = await fetchMediaPage(
+		buildMediaUrl(graphApiVersion, credentials.userId, endpoint, null),
+		credentials.accessToken,
+	);
+	return result.outcome === "success";
+}
+
+async function checkGraphHealth(
+	env: Env,
+	graphApiVersion: string,
+): Promise<GraphHealth> {
+	const underwaterRoute = routeFor("underwater", env);
+	const portraitsRoute = routeFor("portraits", env);
+	const [underwaterOwnedOk, underwaterCollaborativeOk, portraitsOwnedOk, portraitsCollaborativeOk] =
+		await Promise.all([
+			probeMedia(
+				graphApiVersion,
+				underwaterRoute.credentials,
+				"media",
+			),
+			probeMedia(
+				graphApiVersion,
+				underwaterRoute.credentials,
+				"collaborative_media",
+			),
+			probeMedia(
+				graphApiVersion,
+				portraitsRoute.credentials,
+				"media",
+			),
+			probeMedia(
+				graphApiVersion,
+				portraitsRoute.credentials,
+				"collaborative_media",
+			),
+		]);
+	return {
+		ok: underwaterOwnedOk && portraitsOwnedOk,
+		collaborativeReady:
+			underwaterCollaborativeOk && portraitsCollaborativeOk,
+		version: graphApiVersion,
+		feeds: {
+			underwater: {
+				ok: underwaterOwnedOk,
+				collaborativeOk: underwaterCollaborativeOk,
+			},
+			portraits: {
+				ok: portraitsOwnedOk,
+				collaborativeOk: portraitsCollaborativeOk,
+			},
+		},
+	};
+}
+
 export default {
 	async fetch(
 		request: Request,
@@ -1073,37 +1088,26 @@ export default {
 		// Health check
 		const url = new URL(request.url);
 		if (url.pathname === "/" || url.pathname === "/health") {
-			const ready = Boolean(
-				env.IG_USER_ID_UNDERWATER &&
-					env.IG_ACCESS_TOKEN_UNDERWATER &&
-					env.IG_USER_ID_PORTRAITS &&
-					env.IG_ACCESS_TOKEN_PORTRAITS,
-			);
-			const collaborativeReady = Boolean(
-				env.IG_COLLAB_USER_ID_UNDERWATER &&
-					env.IG_COLLAB_ACCESS_TOKEN_UNDERWATER &&
-					env.IG_COLLAB_USER_ID_PORTRAITS &&
-					env.IG_COLLAB_ACCESS_TOKEN_PORTRAITS,
-			);
+			const health = await checkGraphHealth(env, graphApiVersion);
 			return jsonResponse(
-				{ ok: ready, collaborativeReady, version: graphApiVersion },
+				health,
 				effectiveOrigin,
-				ready ? 200 : 503,
+				health.ok ? 200 : 503,
 				"no-store",
 			);
 		}
 
 		const side = url.pathname.replace(/^\//, "");
-		const route = routeFor(side, env);
-		if (!route) {
+		if (!isFeedSide(side)) {
 			return errorResponse(
 				`Unknown route: ${side}. Use /underwater or /portraits.`,
 				effectiveOrigin,
 				404,
 			);
 		}
+		const route = routeFor(side, env);
 
-		if (!route.owned.userId || !route.owned.accessToken) {
+		if (!route.credentials.userId || !route.credentials.accessToken) {
 			return errorResponse(
 				"Service configuration is incomplete.",
 				effectiveOrigin,
@@ -1113,19 +1117,13 @@ export default {
 
 		const rawCursor = url.searchParams.get("cursor");
 		let pagination: CompositeCursor = {
-			version: 2,
-			ownedMediaProvider: initialOwnedMediaProvider(side, route),
+			version: 3,
 			media: { after: null, exhausted: false, failures: 0 },
 			collaborativeMedia: { after: null, exhausted: false, failures: 0 },
 		};
 		if (rawCursor !== null) {
 			const decoded = decodeCompositeCursor(rawCursor);
-			if (
-				!decoded ||
-				(side !== "portraits" && decoded.ownedMediaProvider !== "instagram") ||
-				(decoded.ownedMediaProvider === "facebook" &&
-					(!route.collaborative.userId || !route.collaborative.accessToken))
-			) {
+			if (!decoded) {
 				return errorResponse("Invalid cursor.", effectiveOrigin, 400);
 			}
 			pagination = decoded;
@@ -1133,7 +1131,7 @@ export default {
 
 		const cacheKey = buildCacheKey(
 			side,
-			route.owned.userId,
+			route.credentials.userId,
 			graphApiVersion,
 			rawCursor,
 		);
@@ -1167,64 +1165,30 @@ export default {
 			}
 
 			const skipped: MediaPageResult = { outcome: "skipped" };
-			let ownedProvider = pagination.ownedMediaProvider;
-			let ownedSource = ownedMediaSource(route, ownedProvider);
-			let ownedFallbackUsed = false;
-			const collaborativeConfigured = Boolean(
-				route.collaborative.userId && route.collaborative.accessToken,
-			);
-			let [mediaResult, collaborativeResult] = await Promise.all([
+			const [mediaResult, collaborativeResult] = await Promise.all([
 				pagination.media.exhausted
 					? Promise.resolve(skipped)
 					: fetchMediaPage(
 							buildMediaUrl(
 								graphApiVersion,
-								ownedSource.credentials.userId,
+								route.credentials.userId,
 								"media",
 								pagination.media.after,
-								ownedSource.graphApiHost,
 							),
-							ownedSource.credentials.accessToken,
+							route.credentials.accessToken,
 						),
 				pagination.collaborativeMedia.exhausted
 					? Promise.resolve(skipped)
-					: !collaborativeConfigured
-						? Promise.resolve({
-								outcome: "success",
-								payload: { data: [] },
-							} as MediaPageResult)
-						: fetchMediaPage(
-								buildMediaUrl(
-									graphApiVersion,
-									route.collaborative.userId,
-									"collaborative_media",
-									pagination.collaborativeMedia.after,
-									"graph.facebook.com",
-								),
-								route.collaborative.accessToken,
+					: fetchMediaPage(
+							buildMediaUrl(
+								graphApiVersion,
+								route.credentials.userId,
+								"collaborative_media",
+								pagination.collaborativeMedia.after,
 							),
+							route.credentials.accessToken,
+						),
 			]);
-
-			if (
-				mediaResult.outcome === "failure" &&
-				side === "portraits" &&
-				rawCursor === null &&
-				ownedProvider === "facebook"
-			) {
-				ownedProvider = "instagram";
-				ownedSource = ownedMediaSource(route, ownedProvider);
-				ownedFallbackUsed = true;
-				mediaResult = await fetchMediaPage(
-					buildMediaUrl(
-						graphApiVersion,
-						ownedSource.credentials.userId,
-						"media",
-						null,
-						ownedSource.graphApiHost,
-					),
-					ownedSource.credentials.accessToken,
-				);
-			}
 
 			if (mediaResult.outcome === "failure") {
 				console.error("Instagram API request failed", {
@@ -1248,20 +1212,17 @@ export default {
 
 			const ownedPosts = await inlineCarouselChildren(
 				graphApiVersion,
-				ownedSource.credentials.accessToken,
+				route.credentials.accessToken,
 				postsFromResult(mediaResult),
-				ownedSource.graphApiHost,
 			);
 			const collaborativePosts = await inlineCarouselChildren(
 				graphApiVersion,
-				route.collaborative.accessToken,
+				route.credentials.accessToken,
 				postsFromResult(collaborativeResult),
-				"graph.facebook.com",
 			);
 			const augmentedPosts = mergeMediaPosts(ownedPosts, collaborativePosts);
 			const nextPagination: CompositeCursor = {
-				version: 2,
-				ownedMediaProvider: ownedProvider,
+				version: 3,
 				media: stateFromResult(pagination.media, mediaResult),
 				collaborativeMedia: stateFromResult(
 					pagination.collaborativeMedia,
@@ -1277,9 +1238,7 @@ export default {
 						paging: { next: encodeCompositeCursor(nextPagination) },
 					}
 				: { data: augmentedPosts };
-			const collaborativeDegraded =
-				!collaborativeConfigured || collaborativeResult.outcome === "failure";
-			if (collaborativeDegraded || ownedFallbackUsed) {
+			if (collaborativeResult.outcome === "failure") {
 				return jsonResponse(responseBody, effectiveOrigin, 200, "no-store");
 			}
 			const cacheEnvelope = createCacheEnvelope(responseBody);
