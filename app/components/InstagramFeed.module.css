@@ -1,6 +1,13 @@
 .feed {
-  padding-block: clamp(60px, 10vw, 120px);
-  border-top: 1px solid var(--line);
+	padding-block: clamp(60px, 10vw, 120px);
+	border-top: 1px solid var(--line);
+	background:
+		radial-gradient(
+			ellipse 48% 38% at 94% 0%,
+			color-mix(in srgb, var(--accent) 12%, transparent),
+			transparent 74%
+		),
+		var(--bg);
 }
 
 .head {
@@ -8,7 +15,40 @@
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 36px;
+	margin-bottom: 36px;
+}
+
+.titleBlock {
+	display: flex;
+	align-items: center;
+	gap: 18px;
+	min-width: 0;
+}
+
+.titleMark {
+	display: block;
+	flex: 0 0 auto;
+	width: 48px;
+	height: 48px;
+	border-radius: 14px;
+	box-shadow:
+		0 0 0 1px color-mix(in srgb, var(--accent) 38%, var(--line)),
+		0 12px 30px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.titleCopy {
+	display: grid;
+	gap: 8px;
+	min-width: 0;
+}
+
+.kicker {
+	color: var(--accent-2);
+	font-family: var(--ff-mono);
+	font-size: 10px;
+	letter-spacing: 0.18em;
+	line-height: 1;
+	text-transform: uppercase;
 }
 
 .title {
@@ -117,7 +157,7 @@
   border-radius: 8px;
   overflow: hidden;
   background: var(--bg-2);
-  border: 1px solid var(--line-soft);
+	border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line-soft));
   /*
    * Hover feedback is intentionally non-transformative. Animating
    * `transform` on the tile (or its child image) can cause the

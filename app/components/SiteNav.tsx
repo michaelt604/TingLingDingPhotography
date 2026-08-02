@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useContact } from './ContactProvider';
 import styles from './SiteNav.module.css';
 
@@ -24,7 +25,9 @@ export function SiteNav({ current }: Props) {
   return (
     <header className={styles.nav}>
       <Link href="/" className={styles.brand} aria-label="TingLingDing Photography">
-        <span className={styles.brandMark} aria-hidden="true">◆</span>
+        <span className={styles.brandMark} aria-hidden="true">
+          <Image src="/favicon.svg" alt="" width={24} height={24} unoptimized />
+        </span>
         <span className={styles.brandText}>TingLingDing</span>
       </Link>
 

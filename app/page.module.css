@@ -7,17 +7,80 @@
 
 /* Split container */
 .split {
-  display: grid;
+	position: relative;
+	display: grid;
   grid-template-columns: 1fr;
   grid-template-rows: 1fr 1fr;
   width: 100%;
-  min-height: 100dvh;
+	min-height: 100dvh;
+}
+
+/* A quiet version of the icon's vertical flow: teal sea meeting lavender hair. */
+.split::before {
+	content: "";
+	position: absolute;
+	left: 50%;
+	top: 12%;
+	bottom: 12%;
+	z-index: 3;
+	width: 1px;
+	background: linear-gradient(
+		to bottom,
+		transparent,
+		color-mix(in srgb, #3eb8af 60%, transparent) 22%,
+		#d0a8ee 50%,
+		color-mix(in srgb, #3eb8af 60%, transparent) 78%,
+		transparent
+	);
+	box-shadow: 0 0 18px color-mix(in srgb, #d0a8ee 42%, transparent);
+	pointer-events: none;
+}
+
+/* The mark gives the split landing page a clear brand anchor without adding a hero image. */
+.split::after {
+	content: "";
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	z-index: 4;
+	width: 56px;
+	height: 56px;
+	border: 1px solid color-mix(in srgb, #d0a8ee 58%, #3eb8af);
+	border-radius: 16px;
+	background: #07111a url("/favicon.svg") center / cover no-repeat;
+	box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34), 0 0 24px color-mix(in srgb, #d0a8ee 28%, transparent);
+	transform: translate(-50%, -50%);
+	pointer-events: none;
 }
 @media (min-width: 860px) {
   .split {
     grid-template-columns: 1fr 1fr;
     grid-template-rows: 1fr;
   }
+}
+
+@media (max-width: 859px) {
+	.split::before {
+		left: 12%;
+		right: 12%;
+		top: 50%;
+		bottom: auto;
+		width: auto;
+		height: 1px;
+		background: linear-gradient(
+			to right,
+			transparent,
+			color-mix(in srgb, #3eb8af 60%, transparent) 22%,
+			#d0a8ee 50%,
+			color-mix(in srgb, #3eb8af 60%, transparent) 78%,
+			transparent
+		);
+	}
+	.split::after {
+		width: 48px;
+		height: 48px;
+		border-radius: 14px;
+	}
 }
 
 /* Each half — a div so the IG handle can be a sibling <a>, not a descendant. */

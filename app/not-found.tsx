@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import type { Metadata } from 'next';
 import styles from './not-found.module.css';
 
@@ -18,7 +19,9 @@ export default function NotFound() {
         </p>
         <nav className={styles.actions} aria-label="Site sections">
           <Link href="/" className={`${styles.link} ${styles.linkPrimary}`}>
-            <span className={styles.linkDot} aria-hidden="true">◆</span>
+            <span className={styles.linkDot} aria-hidden="true">
+              <Image src="/favicon.svg" alt="" width={18} height={18} unoptimized />
+            </span>
             <span>Hub</span>
           </Link>
           <Link href="/underwater/" className={styles.link}>Underwater</Link>
