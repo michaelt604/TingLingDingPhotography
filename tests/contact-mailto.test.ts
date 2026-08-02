@@ -7,10 +7,8 @@ test('buildContactMailto trims and encodes inquiry fields', () => {
     name: '  Ada Lovelace  ',
     email: ' ada@example.com ',
     topic: ' Underwater session & prints ',
-    sessionType: ' Underwater session ',
     timeframe: ' October 2026 ',
     location: ' Vancouver, BC ',
-    budgetUsage: ' Personal use & prints ',
     message: '  Available next month?\nThank you.  ',
   });
 
@@ -20,7 +18,7 @@ test('buildContactMailto trims and encodes inquiry fields', () => {
   assert.equal(url.searchParams.get('subject'), 'Underwater session & prints');
   assert.equal(
     url.searchParams.get('body'),
-    'Name: Ada Lovelace\nEmail: ada@example.com\nSession type: Underwater session\nDate / timeframe: October 2026\nLocation: Vancouver, BC\nBudget / usage: Personal use & prints\n\nAvailable next month?\nThank you.',
+    'Name: Ada Lovelace\nEmail: ada@example.com\nDate / timeframe: October 2026\nLocation: Vancouver, BC\n\nAvailable next month?\nThank you.',
   );
 });
 

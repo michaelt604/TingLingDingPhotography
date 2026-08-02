@@ -47,41 +47,6 @@ function Field({ id, label, value, onChange, type = 'text', textarea, required, 
   );
 }
 
-interface SelectFieldProps {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: readonly string[];
-  required?: boolean;
-}
-
-function SelectField({ id, label, value, onChange, options, required }: SelectFieldProps) {
-  return (
-    <div className={styles.field}>
-      <label htmlFor={id} className={`mono ${styles.label}`}>{label}{required ? ' *' : ''}</label>
-      <select
-        id={id}
-        name={id}
-        className={styles.input}
-        value={value}
-        required={required}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        <option value="">Select a session type</option>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
-      </select>
-    </div>
-  );
-}
-
-const sessionTypeOptions = [
-  'Portrait session',
-  'Underwater session',
-  'Editorial / commercial',
-  'Other',
-] as const;
-
 interface Props {
   heading?: string;
   headingId?: string;
@@ -105,10 +70,8 @@ export function Contact({
 }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [sessionType, setSessionType] = useState('');
   const [timeframe, setTimeframe] = useState('');
   const [location, setLocation] = useState('');
-  const [budgetUsage, setBudgetUsage] = useState('');
   const [topic, setTopic] = useState('');
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState('');
@@ -119,10 +82,8 @@ export function Contact({
     const href = buildContactMailto({
       name,
       email,
-      sessionType,
       timeframe,
       location,
-      budgetUsage,
       topic,
       message,
     });
@@ -170,15 +131,6 @@ export function Contact({
               />
             </div>
 
-            <SelectField
-              id="contact-session-type"
-              label="Session type"
-              value={sessionType}
-              onChange={setSessionType}
-              options={sessionTypeOptions}
-              required
-            />
-
             <div className={styles.row}>
               <Field
                 id="contact-timeframe"
@@ -196,14 +148,6 @@ export function Contact({
                 placeholder="City, venue, or remote"
               />
             </div>
-
-            <Field
-              id="contact-budget-usage"
-              label="Budget / usage"
-              value={budgetUsage}
-              onChange={setBudgetUsage}
-              placeholder="e.g. $1,500–$2,500 or personal use"
-            />
 
             <Field
               id="contact-topic"
