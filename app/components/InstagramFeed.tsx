@@ -1171,19 +1171,9 @@ function FeedHeader({ handle, profileUrl, side }: FeedHeaderProps) {
 	const title = side === "underwater" ? "Underwater & Nature" : "Portraits";
 	return (
 		<header className={styles.head}>
-			<div className={styles.titleBlock}>
-				<Image
-					src="/brand-mark-v2.svg"
-					alt=""
-					width={48}
-					height={48}
-					unoptimized
-					className={styles.titleMark}
-				/>
-				<div className={styles.titleCopy}>
-					<span className={styles.kicker}>TingLingDing Photography</span>
-					<h1 className={`display ${styles.title}`}>{title}</h1>
-				</div>
+			<div className={styles.titleCopy}>
+				<span className={styles.kicker}>TingLingDing Photography</span>
+				<h1 className={`display ${styles.title}`}>{title}</h1>
 			</div>
 			<a
 				className={styles.follow}
