@@ -36,22 +36,6 @@
 	pointer-events: none;
 }
 
-/* The mark gives the split landing page a clear brand anchor without adding a hero image. */
-.split::after {
-	content: "";
-	position: absolute;
-	left: 50%;
-	top: 50%;
-	z-index: 4;
-	width: 56px;
-	height: 56px;
-	border: 1px solid color-mix(in srgb, #d0a8ee 58%, #3eb8af);
-	border-radius: 16px;
-	background: #07111a url("/brand-mark-v2.svg") center / cover no-repeat;
-	box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34), 0 0 24px color-mix(in srgb, #d0a8ee 28%, transparent);
-	transform: translate(-50%, -50%);
-	pointer-events: none;
-}
 @media (min-width: 860px) {
   .split {
     grid-template-columns: 1fr 1fr;
@@ -75,11 +59,6 @@
 			color-mix(in srgb, #3eb8af 60%, transparent) 78%,
 			transparent
 		);
-	}
-	.split::after {
-		width: 48px;
-		height: 48px;
-		border-radius: 14px;
 	}
 }
 
@@ -127,17 +106,19 @@
 /* Underwater half — deep teal/blue */
 .halfUnderwater .halfBg {
   background:
-    radial-gradient(ellipse 80% 60% at 30% 30%, #1a8a8a 0%, transparent 60%),
-    radial-gradient(ellipse 70% 80% at 80% 80%, #2a5a7a 0%, transparent 60%),
-    radial-gradient(ellipse 90% 60% at 50% 50%, #0c2733 0%, var(--accent-ink) 80%);
+    radial-gradient(ellipse 62% 48% at 4% 8%, rgba(71, 213, 194, 0.58) 0%, transparent 72%),
+    radial-gradient(ellipse 76% 86% at 100% 94%, rgba(42, 116, 194, 0.62) 0%, transparent 70%),
+    conic-gradient(from 218deg at 58% 45%, #071521 0deg, #0b5265 92deg, #092b49 190deg, #06131f 286deg, #071521 360deg);
+  background-blend-mode: screen, screen, normal;
 }
 
 /* Portrait half — purple gradient */
 .halfPortrait .halfBg {
   background:
-    radial-gradient(ellipse 70% 60% at 70% 30%, #6a3a9c 0%, transparent 60%),
-    radial-gradient(ellipse 60% 80% at 20% 80%, #8a4abc 0%, transparent 60%),
-    radial-gradient(ellipse 90% 70% at 50% 50%, #2a1850 0%, #14082a 80%);
+    radial-gradient(ellipse 72% 58% at 98% 2%, rgba(220, 151, 246, 0.42) 0%, transparent 72%),
+    radial-gradient(ellipse 70% 88% at 0% 100%, rgba(93, 72, 190, 0.52) 0%, transparent 72%),
+    conic-gradient(from 160deg at 48% 42%, #120a27 0deg, #55236e 105deg, #251044 205deg, #8a3da1 292deg, #120a27 360deg);
+  background-blend-mode: screen, screen, normal;
 }
 
 /* Content */
