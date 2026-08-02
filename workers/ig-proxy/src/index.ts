@@ -306,33 +306,47 @@ function applyInlineChildren(
  *
  * Used only as a fallback for carousels the list edges did not expand
  * inline — the /media edge expands `children` via field expansion, but
- * /collaborative_media returns carousels without it. Whether the
- * account's token may read the owner's children depends on the post's
- * collaboration sharing; a denial degrades to the embed view.
+ * /collaborative_media returns carousels without it. The single-media
+ * node read with nested expansion is tried first (the documented
+ * supported form of field expansion); if that omits children too, the
+ * /children edge is tried. Whether the account's token may read the
+ * owner's children depends on the post's collaboration sharing; a
+ * denial degrades to the embed view.
  */
 async function fetchCarouselChildren(
 	graphApiVersion: string,
 	parentId: string,
 	accessToken: string,
 ): Promise<unknown[]> {
-	const url =
+	const nodeUrl =
+		`https://${GRAPH_API_HOST}/${graphApiVersion}/${encodeURIComponent(parentId)}` +
+		`?fields=${MEDIA_FIELDS}`;
+	const edgeUrl =
 		`https://${GRAPH_API_HOST}/${graphApiVersion}/${encodeURIComponent(parentId)}/children` +
 		`?fields=${CHILDREN_FIELDS}&limit=10`;
-	try {
-		const response = await fetch(url, {
-			headers: { Authorization: `Bearer ${accessToken}` },
-		});
-		if (!response.ok) return [];
-		const payload = await response.json();
-		return normalizeCarouselChildren(payload);
-	} catch (error) {
-		console.error(
-			"Instagram carousel children request failed",
-			parentId,
-			error instanceof Error ? error.name : "UnknownError",
-		);
-		return [];
+	for (const url of [nodeUrl, edgeUrl]) {
+		try {
+			const response = await fetch(url, {
+				headers: { Authorization: `Bearer ${accessToken}` },
+			});
+			if (!response.ok) continue;
+			const payload = await response.json();
+			const connection =
+				payload && typeof payload === "object" &&
+				(payload as { children?: unknown }).children !== undefined
+					? (payload as { children: unknown }).children
+					: payload;
+			const children = normalizeCarouselChildren(connection);
+			if (children.length > 0) return children;
+		} catch (error) {
+			console.error(
+				"Instagram carousel children request failed",
+				parentId,
+				error instanceof Error ? error.name : "UnknownError",
+			);
+		}
 	}
+	return [];
 }
 
 /**
@@ -425,7 +439,7 @@ const MAX_CLIENT_CURSOR_LENGTH = 1024;
 // Bump when the cached response shape changes (e.g. the inline
 // `children` expansion), so stale entries from previous schemas are
 // never served.
-const CACHE_SCHEMA_VERSION = "facebook-two-token-v3-children-fallback";
+const CACHE_SCHEMA_VERSION = "facebook-two-token-v4-node-children";
 
 interface SourceCursorState {
 	after: string | null;

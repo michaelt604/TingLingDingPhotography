@@ -913,19 +913,31 @@ test("carousels the list edges did not expand inline fall back to per-post child
 					carousel("carousel-e", "2026-01-03T00:00:00Z"),
 				]);
 			}
+			if (/^\/v25\.0\/[^/]+$/.test(url.pathname) && url.searchParams.get("fields")?.includes("children{")) {
+				// Single-media node read: nested children expansion is
+				// the primary fallback for carousels the list edges omit.
+				const parentId = url.pathname.split("/")[2];
+				assert.equal(
+					new Headers(init?.headers).get("Authorization"),
+					"Bearer secret-2",
+				);
+				return Response.json({
+					id: parentId,
+					media_type: "CAROUSEL_ALBUM",
+					children: {
+						data: [
+							{
+								id: `child-${parentId}`,
+								media_type: "IMAGE",
+								media_url: `https://cdninstagram.com/child-${parentId}.jpg`,
+							},
+						],
+					},
+				});
+			}
 			if (url.pathname.endsWith("/children")) {
 				childrenCalls += 1;
-				const parentId = url.pathname.split("/")[2];
-				assert.match(url.pathname, /^\/v25\.0\/[^/]+\/children$/);
-				return Response.json({
-					data: [
-						{
-							id: `child-${parentId}`,
-							media_type: "IMAGE",
-							media_url: `https://cdninstagram.com/child-${parentId}.jpg`,
-						},
-					],
-				});
+				return new Response(null, { status: 403 });
 			}
 			return new Response(null, { status: 404 });
 		},
@@ -936,7 +948,7 @@ test("carousels the list edges did not expand inline fall back to per-post child
 			);
 			assert.equal(response.status, 200);
 			const body = (await response.json()) as { data: Array<Record<string, unknown>> };
-			assert.equal(childrenCalls, 4);
+			assert.equal(childrenCalls, 0, "the node read should resolve children without the /children edge");
 			assert.deepEqual(
 				body.data.map((post) => post.id),
 				["carousel-d", "carousel-a", "carousel-e", "carousel-b", "carousel-c"],
