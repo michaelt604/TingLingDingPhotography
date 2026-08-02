@@ -26,7 +26,7 @@ export function SiteNav({ current }: Props) {
     <header className={styles.nav}>
       <Link href="/" className={styles.brand} aria-label="TingLingDing Photography">
         <span className={styles.brandMark} aria-hidden="true">
-          <Image src="/brand-mark.png" alt="" width={24} height={24} unoptimized />
+          <Image src="/brand-mark-vector.svg" alt="" width={24} height={24} unoptimized />
         </span>
         <span className={styles.brandText}>TingLingDing</span>
       </Link>
