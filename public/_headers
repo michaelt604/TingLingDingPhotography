@@ -9,7 +9,9 @@
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   # Next.js static hydration requires inline scripts.
   # Cloudflare hosts are for the Super Bot Fight Mode challenge widget.
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.cloudflare.com https://*.challenges.cloudflare.com; img-src 'self' https://*.cdninstagram.com https://*.fbcdn.net data:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://ig-proxy.michaelt604.workers.dev; frame-src https://www.instagram.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' mailto:
+  # static.cloudflareinsights.com hosts the Web Analytics beacon injected by Pages.
+  # ig-proxy.michaelt604.workers.dev serves the resized feed images via its /img route.
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.cloudflare.com https://*.challenges.cloudflare.com https://static.cloudflareinsights.com; img-src 'self' https://*.cdninstagram.com https://*.fbcdn.net https://ig-proxy.michaelt604.workers.dev data:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://ig-proxy.michaelt604.workers.dev; frame-src https://www.instagram.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' mailto:
 
 
 # Cache static assets aggressively
@@ -17,4 +19,4 @@
   Cache-Control: public, max-age=31536000, immutable
 
 /favicon.svg
-  Cache-Control: public, max-age=604800
+  Cache-Control: public, max-age=31536000, immutable

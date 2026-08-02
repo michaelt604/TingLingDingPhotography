@@ -10,9 +10,9 @@ export const metadata: Metadata = {
   alternates: { canonical: '/underwater/' },
   openGraph: {
     url: '/underwater/',
-    images: [{ url: '/og-underwater.svg', width: 1200, height: 630, alt: 'Underwater and nature photography' }],
+    images: [{ url: '/og-underwater.png', width: 1200, height: 630, alt: 'Underwater and nature photography' }],
   },
-  twitter: { card: 'summary_large_image', images: ['/og-underwater.svg'] },
+  twitter: { card: 'summary_large_image', images: ['/og-underwater.png'] },
 };
 
 const IG_HANDLE = 'tinglingdingphotography';

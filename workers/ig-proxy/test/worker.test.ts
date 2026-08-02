@@ -9,6 +9,7 @@ import worker, {
 	errorResponse,
 	resolveAllowlist,
 	resolveGraphApiVersion,
+	resolveImageWidth,
 	resolveOrigin,
 	validateCursor,
 } from "../src/index.ts";
@@ -173,10 +174,10 @@ test("error responses are never publicly cached", () => {
 });
 
 test("cache keys vary by account, version, and side", () => {
-	const first = buildCacheKey("underwater", "123", "v23.0").url;
-	assert.notEqual(first, buildCacheKey("underwater", "456", "v23.0").url);
+	const first = buildCacheKey("underwater", "123", "v25.0").url;
+	assert.notEqual(first, buildCacheKey("underwater", "456", "v25.0").url);
 	assert.notEqual(first, buildCacheKey("underwater", "123", "v24.0").url);
-	assert.notEqual(first, buildCacheKey("portraits", "123", "v23.0").url);
+	assert.notEqual(first, buildCacheKey("portraits", "123", "v25.0").url);
 });
 
 const readyEnv: Env = {
@@ -185,7 +186,7 @@ const readyEnv: Env = {
 	IG_COLLAB_USER_ID_UNDERWATER: "3",
 	IG_COLLAB_USER_ID_PORTRAITS: "4",
 	ALLOWED_ORIGIN: "https://example.com",
-	GRAPH_API_VERSION: "v23.0",
+	GRAPH_API_VERSION: "v25.0",
 };
 
 const productionEnv: Env = {
@@ -357,16 +358,16 @@ test("each account uses its single Facebook token for both Graph edges", async (
 			.map(({ host, path, authorization }) => ({ host, path, authorization }))
 			.sort((left, right) => left.path.localeCompare(right.path)),
 		[
-			{ host: "graph.facebook.com", path: "/v23.0/3/collaborative_media", authorization: "Bearer secret-1" },
-			{ host: "graph.facebook.com", path: "/v23.0/3/media", authorization: "Bearer secret-1" },
-			{ host: "graph.facebook.com", path: "/v23.0/4/collaborative_media", authorization: "Bearer secret-2" },
-			{ host: "graph.facebook.com", path: "/v23.0/4/media", authorization: "Bearer secret-2" },
+			{ host: "graph.facebook.com", path: "/v25.0/3/collaborative_media", authorization: "Bearer secret-1" },
+			{ host: "graph.facebook.com", path: "/v25.0/3/media", authorization: "Bearer secret-1" },
+			{ host: "graph.facebook.com", path: "/v25.0/4/collaborative_media", authorization: "Bearer secret-2" },
+			{ host: "graph.facebook.com", path: "/v25.0/4/media", authorization: "Bearer secret-2" },
 		].sort((left, right) => left.path.localeCompare(right.path)),
 	);
 });
 
 test("globally shared KV hit bypasses Instagram Graph requests", async () => {
-	const localCacheKey = buildCacheKey("underwater", "3", "v23.0");
+	const localCacheKey = buildCacheKey("underwater", "3", "v25.0");
 	const cacheKey = await buildKvCacheKey(localCacheKey);
 	const kv = createKvMock({
 		initial: {
@@ -414,7 +415,7 @@ test("KV keys stay below the platform limit for maximum valid cursors", async ()
 });
 
 test("KV hits preserve the original expiry for browser and L1 caching", async () => {
-	const localCacheKey = buildCacheKey("underwater", "3", "v23.0");
+	const localCacheKey = buildCacheKey("underwater", "3", "v25.0");
 	const kvCacheKey = await buildKvCacheKey(localCacheKey);
 	const kv = createKvMock({
 		initial: {
@@ -448,7 +449,7 @@ test("KV hits preserve the original expiry for browser and L1 caching", async ()
 });
 
 test("corrupt KV values fall through to Graph instead of suppressing the feed", async () => {
-	const localCacheKey = buildCacheKey("underwater", "3", "v23.0");
+	const localCacheKey = buildCacheKey("underwater", "3", "v25.0");
 	const kvCacheKey = await buildKvCacheKey(localCacheKey);
 	const invalidValues: unknown[] = [
 		"not-an-envelope",
@@ -497,7 +498,7 @@ test("corrupt KV values fall through to Graph instead of suppressing the feed", 
 });
 
 test("corrupt L1 values fall through to a valid global KV entry", async () => {
-	const localCacheKey = buildCacheKey("underwater", "3", "v23.0");
+	const localCacheKey = buildCacheKey("underwater", "3", "v25.0");
 	const kvCacheKey = await buildKvCacheKey(localCacheKey);
 	const kv = createKvMock({
 		initial: {
@@ -855,8 +856,8 @@ test("merges owned and collaborative posts by descending timestamp, dedupes ids,
 				(url) => !url.pathname.endsWith("/children"),
 			);
 			assert.deepEqual(listCalls.map((url) => url.pathname).sort(), [
-				"/v23.0/3/collaborative_media",
-				"/v23.0/3/media",
+				"/v25.0/3/collaborative_media",
+				"/v25.0/3/media",
 			]);
 			for (const url of listCalls) {
 				assert.equal(url.hostname, "graph.facebook.com");
@@ -1502,7 +1503,7 @@ test("health probes actual Graph paths without exposing credentials", async () =
 			assert.deepEqual(JSON.parse(responseText), {
 				ok: true,
 				collaborativeReady: true,
-				version: "v23.0",
+				version: "v25.0",
 				feeds: {
 					underwater: {
 						ok: true,
@@ -1527,10 +1528,10 @@ test("health probes actual Graph paths without exposing credentials", async () =
 	assert.deepEqual(
 		requested.sort((left, right) => left.path.localeCompare(right.path)),
 		[
-			{ host: "graph.facebook.com", path: "/v23.0/3/collaborative_media" },
-			{ host: "graph.facebook.com", path: "/v23.0/3/media" },
-			{ host: "graph.facebook.com", path: "/v23.0/4/collaborative_media" },
-			{ host: "graph.facebook.com", path: "/v23.0/4/media" },
+			{ host: "graph.facebook.com", path: "/v25.0/3/collaborative_media" },
+			{ host: "graph.facebook.com", path: "/v25.0/3/media" },
+			{ host: "graph.facebook.com", path: "/v25.0/4/collaborative_media" },
+			{ host: "graph.facebook.com", path: "/v25.0/4/media" },
 		].sort((left, right) => left.path.localeCompare(right.path)),
 	);
 });
@@ -1539,7 +1540,7 @@ test("health returns 503 when a required account media probe fails", async () =>
 	await withWorkerMocks(
 		async (input) => {
 			const url = requestPath(input);
-			if (url.pathname === "/v23.0/3/media") {
+			if (url.pathname === "/v25.0/3/media") {
 				return Response.json(
 					{ error: { type: "OAuthException", code: 190 } },
 					{ status: 401 },
@@ -1575,4 +1576,139 @@ test("handler rejects unsupported methods", async () => {
 	);
 	assert.equal(response.status, 405);
 	assert.equal(response.headers.get("Cache-Control"), "no-store");
+});
+
+test("image width clamps to the supported range and defaults when invalid", () => {
+	assert.equal(resolveImageWidth(null), 800);
+	assert.equal(resolveImageWidth("abc"), 800);
+	assert.equal(resolveImageWidth(""), 800);
+	assert.equal(resolveImageWidth("50"), 100);
+	assert.equal(resolveImageWidth("2000"), 1600);
+	assert.equal(resolveImageWidth("900"), 900);
+});
+
+test("image proxy rejects missing, foreign, and non-https sources", async () => {
+	const cases = [
+		"https://worker.test/img",
+		"https://worker.test/img?u=https%3A%2F%2Fevil.example.com%2Fphoto.jpg",
+		"https://worker.test/img?u=https%3A%2F%2Fwww.instagram.com%2Fp%2Fabc%2F",
+		"https://worker.test/img?u=http%3A%2F%2Fscontent.cdninstagram.com%2Fphoto.jpg",
+	];
+	for (const url of cases) {
+		const response = await worker.fetch(new Request(url), readyEnv);
+		assert.equal(response.status, 400, `expected 400 for: ${url}`);
+		assert.equal(response.headers.get("Cache-Control"), "no-store");
+	}
+});
+
+test("image proxy passes resize options upstream and caches the result in KV", async () => {
+	const { namespace, capture } = createKvMock();
+	const upstreamCalls: { input: string; cf?: RequestInit["cf"] }[] = [];
+	const pending: Promise<unknown>[] = [];
+	const ctx = {
+		waitUntil: (promise: Promise<unknown>) => {
+			pending.push(promise);
+		},
+	} as unknown as ExecutionContext;
+
+	await withWorkerMocks(
+		async (input, init) => {
+			upstreamCalls.push({ input: String(input), cf: init?.cf });
+			return new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+				headers: { "Content-Type": "image/png" },
+			});
+		},
+		async () => {
+			const response = await worker.fetch(
+				new Request(
+					"https://worker.test/img?u=https%3A%2F%2Fscontent.cdninstagram.com%2Fv%2Ft51%2Fphoto.jpg&w=600",
+				),
+				{ ...readyEnv, IG_FEED_CACHE: namespace },
+				ctx,
+			);
+			assert.equal(response.status, 200);
+			assert.equal(response.headers.get("Content-Type"), "image/png");
+			assert.equal(
+				response.headers.get("Cache-Control"),
+				"public, max-age=2592000, immutable",
+			);
+		},
+	);
+
+	const upstreamCall = upstreamCalls[0];
+	assert.ok(upstreamCall, "upstream fetch should have been called");
+	assert.equal(
+		upstreamCall.input,
+		"https://scontent.cdninstagram.com/v/t51/photo.jpg",
+	);
+	const imageOptions = upstreamCall.cf?.image as Record<string, unknown> | undefined;
+	assert.equal(imageOptions?.width, 600);
+	assert.equal(imageOptions?.fit, "scale-down");
+	assert.equal(imageOptions?.quality, 85);
+	assert.equal(imageOptions?.format, "auto");
+	assert.equal(upstreamCall.cf?.cacheTtl, 2592000);
+
+	await Promise.all(pending);
+	assert.equal(capture.puts.length, 1);
+	const firstPut = capture.puts[0];
+	assert.ok(firstPut, "expected one KV write");
+	const envelope = JSON.parse(firstPut.value) as {
+		version: number;
+		contentType: string;
+		data: string;
+	};
+	assert.equal(envelope.version, 1);
+	assert.equal(envelope.contentType, "image/png");
+	assert.equal(envelope.data, "iVBORw==");
+	assert.equal(firstPut.expirationTtl, 2592000);
+});
+
+test("image KV hits are served without another upstream fetch", async () => {
+	const { namespace, capture } = createKvMock();
+	let upstreamCalls = 0;
+	const pending: Promise<unknown>[] = [];
+	const ctx = {
+		waitUntil: (promise: Promise<unknown>) => {
+			pending.push(promise);
+		},
+	} as unknown as ExecutionContext;
+
+	await withWorkerMocks(
+		async () => {
+			upstreamCalls += 1;
+			return new Response(new Uint8Array([1, 2, 3]), {
+				headers: { "Content-Type": "image/jpeg" },
+			});
+		},
+		async () => {
+			const env = { ...readyEnv, IG_FEED_CACHE: namespace };
+			const url =
+				"https://worker.test/img?u=https%3A%2F%2Fscontent.cdninstagram.com%2Fv%2Ft51%2Fphoto.jpg&w=800";
+			const first = await worker.fetch(new Request(url), env, ctx);
+			assert.equal(first.status, 200);
+			await Promise.all(pending);
+			const second = await worker.fetch(new Request(url), env, ctx);
+			assert.equal(second.status, 200);
+			assert.equal(upstreamCalls, 1, "KV hit must bypass the upstream fetch");
+			assert.equal(capture.puts.length, 1);
+		},
+	);
+});
+
+test("image proxy upstream failures return an error and never write to KV", async () => {
+	const { namespace, capture } = createKvMock();
+	await withWorkerMocks(
+		async () => new Response("boom", { status: 500 }),
+		async () => {
+			const response = await worker.fetch(
+				new Request(
+					"https://worker.test/img?u=https%3A%2F%2Fscontent.cdninstagram.com%2Fv%2Ft51%2Fphoto.jpg",
+				),
+				{ ...readyEnv, IG_FEED_CACHE: namespace },
+			);
+			assert.equal(response.status, 500);
+			assert.equal(response.headers.get("Cache-Control"), "no-store");
+			assert.equal(capture.puts.length, 0);
+		},
+	);
 });

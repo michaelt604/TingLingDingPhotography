@@ -532,14 +532,17 @@ export function buildCacheKey(
 }
 
 export async function buildKvCacheKey(cacheKey: Request): Promise<string> {
+	return `ig-feed:v${CACHE_ENVELOPE_VERSION}:${await sha256Hex(cacheKey.url)}`;
+}
+
+async function sha256Hex(input: string): Promise<string> {
 	const digest = await crypto.subtle.digest(
 		"SHA-256",
-		new TextEncoder().encode(cacheKey.url),
+		new TextEncoder().encode(input),
 	);
-	const hex = Array.from(new Uint8Array(digest), (byte) =>
+	return Array.from(new Uint8Array(digest), (byte) =>
 		byte.toString(16).padStart(2, "0"),
 	).join("");
-	return `ig-feed:v${CACHE_ENVELOPE_VERSION}:${hex}`;
 }
 
 interface CacheEnvelope {
@@ -1077,6 +1080,154 @@ async function checkGraphHealth(
 	return health;
 }
 
+// --- Image resizing proxy (/img) ---
+// Feed images are requested through /img so the Worker can resize them at
+// the edge instead of shipping full-size originals. Requires Cloudflare
+// Image Resizing to be enabled on the account — when it is not, the
+// `cf.image` options are ignored and the original image is returned, so
+// the route degrades gracefully and the site never loses images.
+const IMAGE_ENVELOPE_VERSION = 1;
+const IMAGE_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
+const IMAGE_MIN_WIDTH = 100;
+const IMAGE_MAX_WIDTH = 1600;
+const IMAGE_DEFAULT_WIDTH = 800;
+
+interface ImageEnvelope {
+	version: typeof IMAGE_ENVELOPE_VERSION;
+	contentType: string;
+	/** Base64-encoded image bytes. */
+	data: string;
+}
+
+export function resolveImageWidth(value: unknown): number {
+	if (typeof value !== "string" || !/^\d+$/.test(value)) {
+		return IMAGE_DEFAULT_WIDTH;
+	}
+	const width = Number(value);
+	if (!Number.isSafeInteger(width)) return IMAGE_DEFAULT_WIDTH;
+	return Math.min(IMAGE_MAX_WIDTH, Math.max(IMAGE_MIN_WIDTH, width));
+}
+
+async function buildImageKvKey(source: string, width: number): Promise<string> {
+	const hex = await sha256Hex(`${source}::${width}`);
+	return `ig-image:v${IMAGE_ENVELOPE_VERSION}:${hex}`;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+	let binary = "";
+	for (let i = 0; i < bytes.length; i += 0x8000) {
+		binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+	}
+	return btoa(binary);
+}
+
+function base64ToBytes(value: string): Uint8Array {
+	const binary = atob(value);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i += 1) {
+		bytes[i] = binary.charCodeAt(i);
+	}
+	return bytes;
+}
+
+function imageResponse(contentType: string, data: string): Response {
+	return new Response(base64ToBytes(data), {
+		headers: {
+			"Content-Type": contentType,
+			"Cache-Control": `public, max-age=${IMAGE_CACHE_TTL_SECONDS}, immutable`,
+		},
+	});
+}
+
+function imageErrorResponse(message: string, status: number): Response {
+	return new Response(JSON.stringify({ error: message }), {
+		status,
+		headers: {
+			"Content-Type": "application/json",
+			"Cache-Control": "no-store",
+		},
+	});
+}
+
+function logImageCacheFailure(
+	operation: "kv-read" | "kv-write",
+	error: unknown,
+): void {
+	console.error("Instagram image cache operation failed", {
+		operation,
+		error: error instanceof Error ? error.name : "UnknownError",
+	});
+}
+
+async function handleImageRequest(
+	url: URL,
+	env: Env,
+	ctx?: ExecutionContext,
+): Promise<Response> {
+	const source = url.searchParams.get("u");
+	const width = resolveImageWidth(url.searchParams.get("w"));
+	if (!source || !isInstagramMediaHttpsUrl(source)) {
+		return imageErrorResponse("Invalid image source.", 400);
+	}
+
+	const kvKey = await buildImageKvKey(source, width);
+	if (env.IG_FEED_CACHE) {
+		try {
+			const cached = await env.IG_FEED_CACHE.get<ImageEnvelope>(kvKey, {
+				type: "json",
+			});
+			if (
+				cached &&
+				cached.version === IMAGE_ENVELOPE_VERSION &&
+				typeof cached.contentType === "string" &&
+				typeof cached.data === "string"
+			) {
+				return imageResponse(cached.contentType, cached.data);
+			}
+		} catch (error) {
+			logImageCacheFailure("kv-read", error);
+		}
+	}
+
+	try {
+		const upstream = await fetch(source, {
+			cf: {
+				image: {
+					width,
+					fit: "scale-down",
+					quality: 85,
+					format: "auto",
+				},
+				cacheTtl: IMAGE_CACHE_TTL_SECONDS,
+			} as unknown as RequestInitCfProperties,
+		});
+		if (!upstream.ok) {
+			return imageErrorResponse("Image fetch failed.", upstream.status);
+		}
+		const contentType = upstream.headers.get("Content-Type") ?? "image/jpeg";
+		const data = bytesToBase64(new Uint8Array(await upstream.arrayBuffer()));
+		if (env.IG_FEED_CACHE) {
+			ctx?.waitUntil(
+				env.IG_FEED_CACHE.put(
+					kvKey,
+					JSON.stringify({
+						version: IMAGE_ENVELOPE_VERSION,
+						contentType,
+						data,
+					} satisfies ImageEnvelope),
+					{ expirationTtl: IMAGE_CACHE_TTL_SECONDS },
+				).catch((error: unknown) => logImageCacheFailure("kv-write", error)),
+			);
+		}
+		return imageResponse(contentType, data);
+	} catch (error) {
+		console.error("Instagram image fetch failed", {
+			error: error instanceof Error ? error.name : "UnknownError",
+		});
+		return imageErrorResponse("Image fetch failed.", 502);
+	}
+}
+
 export default {
 	async fetch(
 		request: Request,
@@ -1137,6 +1288,12 @@ export default {
 				health.ok ? 200 : 503,
 				"no-store",
 			);
+		}
+
+		// Image resizing proxy — browser <img> requests have no Origin
+		// header, so no CORS handling is needed on this route.
+		if (url.pathname === "/img") {
+			return handleImageRequest(url, env, ctx);
 		}
 
 		const side = url.pathname.replace(/^\//, "");

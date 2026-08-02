@@ -20,6 +20,7 @@ import {
 import { getInstagramEmbedUrl } from "./instagramEmbed";
 import { getInstagramFeedDisplayState } from "./instagramFeedState";
 import { fetchWithTimeout } from "./instagramFetch";
+import { buildOptimizedImageUrl } from "./instagramImageUrl";
 
 interface Props {
 	/** IG handle without the @ */
@@ -348,7 +349,12 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 						/>
 						<div className={styles.grid}>
 							{posts.map((post) => (
-								<PostTile key={post.id} post={post} handle={handle} />
+								<PostTile
+									key={post.id}
+									post={post}
+									handle={handle}
+									proxyUrl={proxyUrl}
+								/>
 							))}
 						</div>
 						{/*
@@ -474,7 +480,17 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 interface PostTileProps {
 	post: FeedPost;
 	handle: string;
+	/** ig-proxy origin used to build resized /img URLs; undefined disables resizing. */
+	proxyUrl: string | undefined;
 }
+
+/**
+ * Requested widths for the ig-proxy /img route. The tile grid shows each
+ * image at ~30vw, so 800px covers 2x on most screens; the lightbox is
+ * near full-viewport, so it asks for a larger frame.
+ */
+const TILE_IMAGE_WIDTH = 800;
+const LIGHTBOX_IMAGE_WIDTH = 1600;
 
 /**
  * Renders a single IG post. For CAROUSEL_ALBUM posts with inlined
@@ -488,7 +504,7 @@ interface PostTileProps {
  * open the viewer. The Instagram permalink lives ONLY inside the
  * lightbox; there is no direct tile-level link anymore.
  */
-function PostTile({ post, handle }: PostTileProps) {
+function PostTile({ post, handle, proxyUrl }: PostTileProps) {
 	const isCarousel = post.media_type === "CAROUSEL_ALBUM";
 	const children =
 		isCarousel && Array.isArray(post.children) ? post.children : null;
@@ -523,7 +539,24 @@ function PostTile({ post, handle }: PostTileProps) {
 		},
 		[fallbackSrc, slides],
 	);
-	const currentSrc = slideSrcAt(safeIndex);
+	// Resize through the ig-proxy /img route when available. If the
+	// proxy URL is missing or the source is not an Instagram CDN asset,
+	// buildOptimizedImageUrl returns the raw URL unchanged.
+	const optimizeSrc = useCallback(
+		(raw: string, width: number) =>
+			buildOptimizedImageUrl(raw, width, proxyUrl),
+		[proxyUrl],
+	);
+	// Once any image in the tile fails to load through the proxy, fall
+	// back to the raw Instagram CDN URLs for the whole tile so the feed
+	// keeps working when the resize route is down.
+	const [imageProxyFailed, setImageProxyFailed] = useState(false);
+	const displaySrcAt = useCallback(
+		(index: number, width: number) =>
+			imageProxyFailed ? slideSrcAt(index) : optimizeSrc(slideSrcAt(index), width),
+		[imageProxyFailed, optimizeSrc, slideSrcAt],
+	);
+	const currentSrc = displaySrcAt(safeIndex, TILE_IMAGE_WIDTH);
 	const [transition, setTransition] = useState<{
 		src: string;
 		targetSrc: string;
@@ -532,32 +565,32 @@ function PostTile({ post, handle }: PostTileProps) {
 		direction: -1 | 1;
 	} | null>(null);
 	const beginTransition = useCallback(
-		(targetSrc: string, direction: -1 | 1) => {
+		(targetIndex: number, direction: -1 | 1) => {
 			setTransition((active) => ({
 				// Before the pending image loads, preserve the frame that is
 				// actually still visible. Once a fade is running, currentSrc is
 				// loaded and is safe to become the next outgoing frame.
 				src: active && !active.fading ? active.src : currentSrc,
-				targetSrc,
+				targetSrc: displaySrcAt(targetIndex, TILE_IMAGE_WIDTH),
 				sequence: (active?.sequence ?? 0) + 1,
 				fading: false,
 				direction,
 			}));
 		},
-		[currentSrc],
+		[currentSrc, displaySrcAt],
 	);
 	const goPrev = useCallback(() => {
 		if (safeIndex <= 0) return;
 		const nextIndex = safeIndex - 1;
-		beginTransition(slideSrcAt(nextIndex), -1);
+		beginTransition(nextIndex, -1);
 		setSlideIndex(nextIndex);
-	}, [beginTransition, safeIndex, slideSrcAt]);
+	}, [beginTransition, safeIndex]);
 	const goNext = useCallback(() => {
 		if (safeIndex >= totalSlides - 1) return;
 		const nextIndex = safeIndex + 1;
-		beginTransition(slideSrcAt(nextIndex), 1);
+		beginTransition(nextIndex, 1);
 		setSlideIndex(nextIndex);
-	}, [beginTransition, safeIndex, slideSrcAt, totalSlides]);
+	}, [beginTransition, safeIndex, totalSlides]);
 	const handleLiveImageLoad = useCallback((loadedSrc: string) => {
 		setTransition((active) =>
 			active?.targetSrc === loadedSrc ? { ...active, fading: true } : active,
@@ -614,6 +647,7 @@ function PostTile({ post, handle }: PostTileProps) {
 				label={label}
 				onOpen={openLightbox}
 				onImageLoad={handleLiveImageLoad}
+				onImageError={() => setImageProxyFailed(true)}
 				transitionDirection={transition?.fading ? transition.direction : null}
 				triggerRef={triggerRef}
 				onPointerDown={handlePointerDown}
@@ -651,7 +685,8 @@ function PostTile({ post, handle }: PostTileProps) {
 			) : null}
 			{lightboxOpen ? (
 				<Lightbox
-					src={currentSrc}
+					src={displaySrcAt(safeIndex, LIGHTBOX_IMAGE_WIDTH)}
+					fallbackSrc={slideSrcAt(safeIndex)}
 					alt={label}
 					permalink={post.permalink}
 					embedUrl={embedUrl}
@@ -748,6 +783,8 @@ interface TileImageButtonProps {
 	label: string;
 	onOpen: () => void;
 	onImageLoad: (loadedSrc: string) => void;
+	/** Fired on the first load failure so the parent can fall back to raw CDN URLs. */
+	onImageError: () => void;
 	transitionDirection: -1 | 1 | null;
 	triggerRef: RefObject<HTMLButtonElement | null>;
 	onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void;
@@ -758,6 +795,7 @@ function TileImageButton({
 	label,
 	onOpen,
 	onImageLoad,
+	onImageError,
 	transitionDirection,
 	triggerRef,
 	onPointerDown,
@@ -786,7 +824,15 @@ function TileImageButton({
 					setImageErrorSrc(null);
 					onImageLoad(src);
 				}}
-				onError={() => setImageErrorSrc(src)}
+				onError={() => {
+					// First failure notifies the parent (it swaps to raw CDN
+					// URLs for the tile); a failure of the fallback URL shows
+					// the "Image unavailable" state instead of looping.
+					if (!imageError) {
+						setImageErrorSrc(src);
+						onImageError();
+					}
+				}}
 			/>
 			{imageError ? (
 				<span className={styles.tileImageError} role="status">
@@ -798,6 +844,8 @@ function TileImageButton({
 }
 interface LightboxProps {
 	src: string;
+	/** Raw (unoptimized) URL for the same slide, shown if the resized src fails to load. */
+	fallbackSrc: string;
 	alt: string;
 	permalink: string;
 	embedUrl: string | null;
@@ -812,6 +860,7 @@ interface LightboxProps {
 
 function Lightbox({
 	src,
+	fallbackSrc,
 	alt,
 	permalink,
 	embedUrl,
@@ -825,6 +874,15 @@ function Lightbox({
 }: LightboxProps) {
 	const [embedLoaded, setEmbedLoaded] = useState(false);
 	const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+	// The resized /img src can fail even when the tile version loaded (a
+	// different width is a different upstream request). Swap to the raw
+	// CDN URL rather than leaving a broken image. `failedSrc` records
+	// which URL actually failed: a slide change (new src) retries the
+	// optimized URL, while a failed raw fallback stays on screen instead
+	// of flip-flopping between the two.
+	const [failedSrc, setFailedSrc] = useState<string | null>(null);
+	const displaySrc =
+		failedSrc === src || failedSrc === fallbackSrc ? fallbackSrc : src;
 	const [transition, setTransition] = useState<{
 		src: string;
 		alt: string;
@@ -838,14 +896,14 @@ function Lightbox({
 				// Preserve the frame that is still visible if the previous
 				// destination is pending; otherwise the loaded live frame can
 				// become the next outgoing layer.
-				src: active && !active.fading ? active.src : src,
+				src: active && !active.fading ? active.src : displaySrc,
 				alt: active && !active.fading ? active.alt : alt,
 				sequence: (active?.sequence ?? 0) + 1,
 				fading: false,
 				direction,
 			}));
 		},
-		[alt, src],
+		[alt, displaySrc],
 	);
 	const handlePrev = useCallback(() => {
 		beginTransition(-1);
@@ -958,12 +1016,12 @@ function Lightbox({
 	};
 	const handleLiveImageLoad = useCallback(
 		(loadedSrc: string) => {
-			if (loadedSrc !== src) return;
+			if (loadedSrc !== displaySrc) return;
 			setTransition((active) =>
 				active ? { ...active, fading: true } : active,
 			);
 		},
-		[src],
+		[displaySrc],
 	);
 	const onOutgoingAnimationEnd = useCallback(() => {
 		setTransition(null);
@@ -1015,7 +1073,7 @@ function Lightbox({
 						 * flashes an empty white panel. */}
 						{/* biome-ignore lint/performance/noImgElement: transient copy of the already-loaded Graph cover */}
 						<img
-							src={src}
+							src={displaySrc}
 							alt=""
 							decoding="async"
 							aria-hidden="true"
@@ -1070,11 +1128,12 @@ function Lightbox({
 						) : null}
 						{/* biome-ignore lint/performance/noImgElement: see above */}
 						<img
-							src={src}
+							src={displaySrc}
 							alt={alt}
 							decoding="async"
 							className={`${styles.lightboxImage}${transition?.fading ? ` ${transition.direction === 1 ? styles.lightboxImageEnterNext : styles.lightboxImageEnterPrev}` : ""}`}
-							onLoad={() => handleLiveImageLoad(src)}
+							onLoad={() => handleLiveImageLoad(displaySrc)}
+							onError={() => setFailedSrc(displaySrc)}
 						/>
 						{canNext ? (
 							<button

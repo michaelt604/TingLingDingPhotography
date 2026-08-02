@@ -27,7 +27,7 @@ function isInstagramHost(hostname: string): boolean {
   return hostname === 'instagram.com' || hostname.endsWith('.instagram.com');
 }
 
-function isInstagramMediaUrl(value: unknown): value is string {
+export function isInstagramMediaUrl(value: unknown): value is string {
   if (!isHttpsUrl(value)) return false;
   const hostname = new URL(value).hostname;
   return (

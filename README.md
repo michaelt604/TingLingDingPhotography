@@ -338,8 +338,9 @@ Most tweaks live in:
 
 - [ ] Custom 404 page
 - [x] Non-photographic Open Graph fallback (`public/og-default.png`, sourced from the adjacent SVG)
-- [ ] Image optimization (turn off `unoptimized` in `next.config.mjs` and
-      add `next/image` everywhere)
+- [x] Resize feed images through the ig-proxy `/img` route (KV-cached,
+      Cloudflare Image Resizing); full `next/image` optimization is
+      still off (`unoptimized` in `next.config.mjs`)
 - [ ] Optional: upgrade to SSR with `@cloudflare/next-on-pages` if you
       ever want a real contact-form backend instead of `mailto:`
 
