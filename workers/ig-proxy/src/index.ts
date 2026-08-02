@@ -34,10 +34,10 @@
  *  1. Install wrangler:  npm install -g wrangler
  *  2. Login:            wrangler login
  *  3. cd workers/ig-proxy
- *  4. Set secrets:      wrangler secret put FB_ACCESS_TOKEN_UNDERWATER
- *                       wrangler secret put FB_IG_USER_ID_UNDERWATER
- *                       wrangler secret put FB_ACCESS_TOKEN_PORTRAITS
- *                       wrangler secret put FB_IG_USER_ID_PORTRAITS
+ *  4. Set secrets:      wrangler secret put IG_ACCESS_TOKEN_UNDERWATER
+ *                       wrangler secret put IG_COLLAB_USER_ID_UNDERWATER
+ *                       wrangler secret put IG_ACCESS_TOKEN_PORTRAITS
+ *                       wrangler secret put IG_COLLAB_USER_ID_PORTRAITS
  *  5. Deploy:           wrangler deploy
  *  6. Set NEXT_PUBLIC_IG_PROXY_URL in your Next.js env to the
  *     deployed worker URL (e.g. https://ig-proxy.<you>.workers.dev)
@@ -86,12 +86,12 @@
  */
 
 export interface Env {
-	FB_ACCESS_TOKEN_UNDERWATER: string;
-	FB_ACCESS_TOKEN_PORTRAITS: string;
+	IG_ACCESS_TOKEN_UNDERWATER: string;
+	IG_ACCESS_TOKEN_PORTRAITS: string;
 	/** Facebook-scoped Instagram business account ID. */
-	FB_IG_USER_ID_UNDERWATER: string;
+	IG_COLLAB_USER_ID_UNDERWATER: string;
 	/** Facebook-scoped Instagram business account ID. */
-	FB_IG_USER_ID_PORTRAITS: string;
+	IG_COLLAB_USER_ID_PORTRAITS: string;
 	/**
 	 * Comma-separated HTTPS allowlist. Each entry must be an HTTPS URL
 	 * with no credentials, no path beyond "/", no query, and no fragment.
@@ -169,15 +169,15 @@ function routeFor(path: FeedSide, env: Env): FeedRoute {
 	if (path === "underwater") {
 		return {
 			credentials: {
-				userId: env.FB_IG_USER_ID_UNDERWATER,
-				accessToken: env.FB_ACCESS_TOKEN_UNDERWATER,
+				userId: env.IG_COLLAB_USER_ID_UNDERWATER,
+				accessToken: env.IG_ACCESS_TOKEN_UNDERWATER,
 			},
 		};
 	}
 	return {
 		credentials: {
-			userId: env.FB_IG_USER_ID_PORTRAITS,
-			accessToken: env.FB_ACCESS_TOKEN_PORTRAITS,
+			userId: env.IG_COLLAB_USER_ID_PORTRAITS,
+			accessToken: env.IG_ACCESS_TOKEN_PORTRAITS,
 		},
 	};
 }
@@ -965,8 +965,8 @@ function graphHealthCacheKey(
 ): string {
 	return [
 		graphApiVersion,
-		env.FB_IG_USER_ID_UNDERWATER ?? "",
-		env.FB_IG_USER_ID_PORTRAITS ?? "",
+		env.IG_COLLAB_USER_ID_UNDERWATER ?? "",
+		env.IG_COLLAB_USER_ID_PORTRAITS ?? "",
 		env.ALLOWED_ORIGIN ?? "",
 		requestOrigin ?? "",
 	].join("|");

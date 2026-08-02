@@ -186,7 +186,7 @@ between KV, the local L1, and browser caching.
 4. **Get each Instagram professional-account ID.** With a token that can access
    the linked Facebook Page, query the Page's `instagram_business_account` and
    copy its numeric `id`. The current deployment stores these Facebook-scoped
-   IDs as `FB_IG_USER_ID_UNDERWATER` and `FB_IG_USER_ID_PORTRAITS`.
+   IDs as `IG_COLLAB_USER_ID_UNDERWATER` and `IG_COLLAB_USER_ID_PORTRAITS`.
 
 5. **Generate one Facebook Page/System User token per account.** In Meta
    Business Settings, create or use a System User, assign the app plus the
@@ -196,8 +196,8 @@ between KV, the local L1, and browser caching.
    `/{ig-user-id}/media` and `/{ig-user-id}/collaborative_media` on
    `graph.facebook.com`.
 
-   Store the underwater credential in `FB_ACCESS_TOKEN_UNDERWATER` and the
-   portrait credential in `FB_ACCESS_TOKEN_PORTRAITS`. There are only two access
+   Store the underwater credential in `IG_ACCESS_TOKEN_UNDERWATER` and the
+   portrait credential in `IG_ACCESS_TOKEN_PORTRAITS`. There are only two access
    tokens: the Worker uses the matching account token for both feed edges. Do
    not use Instagram Login tokens or `graph.instagram.com` for this flow. Meta's
    maintained [Instagram API with Facebook Login documentation](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api)
@@ -237,10 +237,10 @@ are still present in the upstream Graph URL path, while tokens stay in the
 redeploy:
 
 ```powershell
-npx wrangler secret put FB_ACCESS_TOKEN_UNDERWATER --config workers/ig-proxy/wrangler.toml
-npx wrangler secret put FB_IG_USER_ID_UNDERWATER --config workers/ig-proxy/wrangler.toml
-npx wrangler secret put FB_ACCESS_TOKEN_PORTRAITS --config workers/ig-proxy/wrangler.toml
-npx wrangler secret put FB_IG_USER_ID_PORTRAITS --config workers/ig-proxy/wrangler.toml
+npx wrangler secret put IG_ACCESS_TOKEN_UNDERWATER --config workers/ig-proxy/wrangler.toml
+npx wrangler secret put IG_COLLAB_USER_ID_UNDERWATER --config workers/ig-proxy/wrangler.toml
+npx wrangler secret put IG_ACCESS_TOKEN_PORTRAITS --config workers/ig-proxy/wrangler.toml
+npx wrangler secret put IG_COLLAB_USER_ID_PORTRAITS --config workers/ig-proxy/wrangler.toml
 npm run deploy --workspace=ig-proxy
 Invoke-RestMethod https://ig-proxy.michaelt604.workers.dev/health
 Invoke-RestMethod https://ig-proxy.michaelt604.workers.dev/underwater
@@ -320,7 +320,7 @@ way to point it at Pages is to move DNS to Cloudflare.
 
 ### Environment variables
 
-The tracked `.env.production` points to `https://ig-proxy.michaelt604.workers.dev`. The Worker stores two Page/System User tokens in `FB_ACCESS_TOKEN_*` and pairs them with the Facebook-scoped `FB_IG_USER_ID_*` IDs. Both feed edges use `graph.facebook.com`; there is no separate collaborator token or OAuth callback.
+The tracked `.env.production` points to `https://ig-proxy.michaelt604.workers.dev`. The Worker stores two Page/System User tokens in `IG_ACCESS_TOKEN_*` and pairs them with the Facebook-scoped `IG_COLLAB_USER_ID_*` IDs. Both feed edges use `graph.facebook.com`; there is no separate collaborator token or OAuth callback.
 
 
 ---
