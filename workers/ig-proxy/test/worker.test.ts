@@ -866,7 +866,7 @@ test("merges owned and collaborative posts by descending timestamp, dedupes ids,
 	);
 });
 
-test("carousels the list edges did not expand inline fall back to per-post children fetches", async () => {
+test("inline children are normalized for owned and collaborative carousels without extra requests", async () => {
 	let childrenCalls = 0;
 	await withWorkerMocks(
 		async (input, init) => {
@@ -907,33 +907,13 @@ test("carousels the list edges did not expand inline fall back to per-post child
 			}
 			if (url.pathname.endsWith("/collaborative_media")) {
 				// Collaborative edge: carousels come back without any
-				// inline children, so the fallback must fetch them.
+				// inline children. The Graph API offers no per-post
+				// fallback for collaborator-owned media, so they must be
+				// returned without children (client falls back to embed).
 				return upstreamPage([
 					carousel("carousel-d", "2026-01-05T00:00:00Z"),
 					carousel("carousel-e", "2026-01-03T00:00:00Z"),
 				]);
-			}
-			if (/^\/v25\.0\/[^/]+$/.test(url.pathname) && url.searchParams.get("fields")?.includes("children{")) {
-				// Single-media node read: nested children expansion is
-				// the primary fallback for carousels the list edges omit.
-				const parentId = url.pathname.split("/")[2];
-				assert.equal(
-					new Headers(init?.headers).get("Authorization"),
-					"Bearer secret-2",
-				);
-				return Response.json({
-					id: parentId,
-					media_type: "CAROUSEL_ALBUM",
-					children: {
-						data: [
-							{
-								id: `child-${parentId}`,
-								media_type: "IMAGE",
-								media_url: `https://cdninstagram.com/child-${parentId}.jpg`,
-							},
-						],
-					},
-				});
 			}
 			if (url.pathname.endsWith("/children")) {
 				childrenCalls += 1;
@@ -948,18 +928,24 @@ test("carousels the list edges did not expand inline fall back to per-post child
 			);
 			assert.equal(response.status, 200);
 			const body = (await response.json()) as { data: Array<Record<string, unknown>> };
-			assert.equal(childrenCalls, 0, "the node read should resolve children without the /children edge");
+			assert.equal(childrenCalls, 0, "no per-post children fetches");
 			assert.deepEqual(
 				body.data.map((post) => post.id),
 				["carousel-d", "carousel-a", "carousel-e", "carousel-b", "carousel-c"],
 			);
-			for (const post of body.data) {
-				assert.equal(Array.isArray(post.children), true, `${post.id} must have children`);
-				assert.equal(
-					(post.children as Array<{ id: string }>)[0]?.id,
-					`child-${post.id}`,
-					`${post.id} children must come from its own fetch`,
-				);
+			const idsWithChildren = body.data
+				.filter((post) => Array.isArray(post.children))
+				.map((post) => post.id);
+			assert.deepEqual(
+				idsWithChildren,
+				["carousel-a"],
+				"only the owned edge populates children inline",
+			);
+			const ownedChildren = (body.data.find((post) => post.id === "carousel-a")
+				?.children ?? []) as Array<{ id: string }>;
+			assert.deepEqual(ownedChildren[0]?.id, "child-carousel-a");
+			for (const post of body.data.filter((p) => !Array.isArray(p.children))) {
+				assert.equal(post.children, undefined, `${post.id} must drop empty or missing connections`);
 			}
 		},
 	);

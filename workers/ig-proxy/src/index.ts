@@ -280,10 +280,11 @@ function normalizeCarouselChildren(payload: unknown): unknown[] {
 /**
  * Normalizes the inline `children` connection the Graph list edges
  * return for CAROUSEL_ALBUM posts (`children: { data: [...] }`) into
- * the flat array the client expects. Posts that came back without
- * children — or whose children are empty or malformed — are returned
- * unchanged (with the connection key dropped) so the per-post
- * fallback can still fill them in.
+ * the flat array the client expects. /media expands children inline;
+ * /collaborative_media omits them, and the Graph API refuses every
+ * per-post fallback for collaborator-owned media, so posts without
+ * children are left as-is (with the connection key dropped) and the
+ * client falls back to the embed view for those.
  */
 function applyInlineChildren(
 	post: Record<string, unknown>,
@@ -297,83 +298,6 @@ function applyInlineChildren(
 		return rest;
 	}
 	return { ...post, children };
-}
-
-/**
- * Fetches the children of a single CAROUSEL_ALBUM post. Returns the
- * normalized array, or an empty array on any failure (which the caller
- * treats as "fall back to the client embed view").
- *
- * Used only as a fallback for carousels the list edges did not expand
- * inline — the /media edge expands `children` via field expansion, but
- * /collaborative_media returns carousels without it. The single-media
- * node read with nested expansion is tried first (the documented
- * supported form of field expansion); if that omits children too, the
- * /children edge is tried. Whether the account's token may read the
- * owner's children depends on the post's collaboration sharing; a
- * denial degrades to the embed view.
- */
-async function fetchCarouselChildren(
-	graphApiVersion: string,
-	parentId: string,
-	accessToken: string,
-): Promise<unknown[]> {
-	const nodeUrl =
-		`https://${GRAPH_API_HOST}/${graphApiVersion}/${encodeURIComponent(parentId)}` +
-		`?fields=${MEDIA_FIELDS}`;
-	const edgeUrl =
-		`https://${GRAPH_API_HOST}/${graphApiVersion}/${encodeURIComponent(parentId)}/children` +
-		`?fields=${CHILDREN_FIELDS}&limit=10`;
-	for (const url of [nodeUrl, edgeUrl]) {
-		try {
-			const response = await fetch(url, {
-				headers: { Authorization: `Bearer ${accessToken}` },
-			});
-			if (!response.ok) continue;
-			const payload = await response.json();
-			const connection =
-				payload && typeof payload === "object" &&
-				(payload as { children?: unknown }).children !== undefined
-					? (payload as { children: unknown }).children
-					: payload;
-			const children = normalizeCarouselChildren(connection);
-			if (children.length > 0) return children;
-		} catch (error) {
-			console.error(
-				"Instagram carousel children request failed",
-				parentId,
-				error instanceof Error ? error.name : "UnknownError",
-			);
-		}
-	}
-	return [];
-}
-
-/**
- * Fills in `children` for CAROUSEL_ALBUM posts the list edges returned
- * without an inline expansion. Requests run in parallel and each is a
- * single Graph round trip; failures are silent and leave the post
- * without `children`, so the client falls back to the embed view.
- */
-async function expandMissingChildren(
-	graphApiVersion: string,
-	accessToken: string,
-	posts: Record<string, unknown>[],
-): Promise<Record<string, unknown>[]> {
-	return Promise.all(
-		posts.map(async (post) => {
-			if (post.media_type !== "CAROUSEL_ALBUM") return post;
-			if (post.children !== undefined) return post;
-			const id = post.id;
-			if (typeof id !== "string") return post;
-			const children = await fetchCarouselChildren(
-				graphApiVersion,
-				id,
-				accessToken,
-			);
-			return children.length > 0 ? { ...post, children } : post;
-		}),
-	);
 }
 
 function validateOriginEntry(entry: string): string | null {
@@ -439,7 +363,7 @@ const MAX_CLIENT_CURSOR_LENGTH = 1024;
 // Bump when the cached response shape changes (e.g. the inline
 // `children` expansion), so stale entries from previous schemas are
 // never served.
-const CACHE_SCHEMA_VERSION = "facebook-two-token-v4-node-children";
+const CACHE_SCHEMA_VERSION = "facebook-two-token-v5-inline-children";
 
 interface SourceCursorState {
 	after: string | null;
@@ -1452,11 +1376,7 @@ export default {
 				postsFromResult(mediaResult),
 				postsFromResult(collaborativeResult),
 			);
-			const augmentedPosts = await expandMissingChildren(
-				graphApiVersion,
-				route.credentials.accessToken,
-				mergedPosts.map(applyInlineChildren),
-			);
+			const augmentedPosts = mergedPosts.map(applyInlineChildren);
 			const nextPagination: CompositeCursor = {
 				version: 3,
 				media: stateFromResult(pagination.media, mediaResult),
