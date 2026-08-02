@@ -425,7 +425,7 @@ const MAX_CLIENT_CURSOR_LENGTH = 1024;
 // Bump when the cached response shape changes (e.g. the inline
 // `children` expansion), so stale entries from previous schemas are
 // never served.
-const CACHE_SCHEMA_VERSION = "facebook-two-token-v2-inline-children";
+const CACHE_SCHEMA_VERSION = "facebook-two-token-v3-children-fallback";
 
 interface SourceCursorState {
 	after: string | null;
