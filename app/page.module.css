@@ -47,7 +47,7 @@
 	height: 56px;
 	border: 1px solid color-mix(in srgb, #d0a8ee 58%, #3eb8af);
 	border-radius: 16px;
-	background: #07111a url("/brand-mark-traced.svg") center / cover no-repeat;
+	background: #07111a url("/brand-mark-v2.svg") center / cover no-repeat;
 	box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34), 0 0 24px color-mix(in srgb, #d0a8ee 28%, transparent);
 	transform: translate(-50%, -50%);
 	pointer-events: none;

@@ -20,7 +20,7 @@ export default function NotFound() {
         <nav className={styles.actions} aria-label="Site sections">
           <Link href="/" className={`${styles.link} ${styles.linkPrimary}`}>
             <span className={styles.linkDot} aria-hidden="true">
-              <Image src="/brand-mark-traced.svg" alt="" width={18} height={18} unoptimized />
+              <Image src="/brand-mark-v2.svg" alt="" width={18} height={18} unoptimized />
             </span>
             <span>Hub</span>
           </Link>
