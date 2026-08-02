@@ -25,7 +25,7 @@
     "check": "npm run lint && npm test && npm run typecheck"
   },
   "dependencies": {
-    "next": "15.5.22",
+    "next": "16.2.12",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
