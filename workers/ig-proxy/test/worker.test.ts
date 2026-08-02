@@ -181,10 +181,10 @@ test("cache keys vary by account, version, and side", () => {
 });
 
 const readyEnv: Env = {
-	IG_ACCESS_TOKEN_UNDERWATER: "secret-1",
-	IG_ACCESS_TOKEN_PORTRAITS: "secret-2",
-	IG_COLLAB_USER_ID_UNDERWATER: "3",
-	IG_COLLAB_USER_ID_PORTRAITS: "4",
+	FB_ACCESS_TOKEN_UNDERWATER: "secret-1",
+	FB_ACCESS_TOKEN_PORTRAITS: "secret-2",
+	FB_IG_USER_ID_UNDERWATER: "3",
+	FB_IG_USER_ID_PORTRAITS: "4",
 	ALLOWED_ORIGIN: "https://example.com",
 	GRAPH_API_VERSION: "v25.0",
 };

@@ -5,10 +5,12 @@
  * exposes a CORS-safe JSON endpoint the static site can call.
  *
  * Routes:
- *   GET /underwater           → first page of @tinglingdingphotography's media
- *   GET /portraits            → first page of @tinglingdingportraits's media
- *   GET /underwater?cursor=X  → next page of @tinglingdingphotography's media
- *   GET /portraits?cursor=X   → next page of @tinglingdingportraits's media
+ *   GET /underwater           → first page of @tinglingdingphotography's
+ *                               owned + collaborative media
+ *   GET /portraits            → first page of @tinglingdingportraits's
+ *                               owned + collaborative media
+ *   GET /underwater?cursor=X  → next page (same merge)
+ *   GET /portraits?cursor=X   → next page (same merge)
  *
  * Pagination:
  *   The upstream Graph API returns a `paging.next` URL that contains
@@ -32,10 +34,10 @@
  *  1. Install wrangler:  npm install -g wrangler
  *  2. Login:            wrangler login
  *  3. cd workers/ig-proxy
- *  4. Set secrets:      wrangler secret put IG_ACCESS_TOKEN_UNDERWATER
- *                       wrangler secret put IG_COLLAB_USER_ID_UNDERWATER
- *                       wrangler secret put IG_ACCESS_TOKEN_PORTRAITS
- *                       wrangler secret put IG_COLLAB_USER_ID_PORTRAITS
+ *  4. Set secrets:      wrangler secret put FB_ACCESS_TOKEN_UNDERWATER
+ *                       wrangler secret put FB_IG_USER_ID_UNDERWATER
+ *                       wrangler secret put FB_ACCESS_TOKEN_PORTRAITS
+ *                       wrangler secret put FB_IG_USER_ID_PORTRAITS
  *  5. Deploy:           wrangler deploy
  *  6. Set NEXT_PUBLIC_IG_PROXY_URL in your Next.js env to the
  *     deployed worker URL (e.g. https://ig-proxy.<you>.workers.dev)
@@ -84,12 +86,12 @@
  */
 
 export interface Env {
-	IG_ACCESS_TOKEN_UNDERWATER: string;
-	IG_ACCESS_TOKEN_PORTRAITS: string;
-	/** Facebook-host Instagram ID; legacy binding name retained in Cloudflare. */
-	IG_COLLAB_USER_ID_UNDERWATER: string;
-	/** Facebook-host Instagram ID; legacy binding name retained in Cloudflare. */
-	IG_COLLAB_USER_ID_PORTRAITS: string;
+	FB_ACCESS_TOKEN_UNDERWATER: string;
+	FB_ACCESS_TOKEN_PORTRAITS: string;
+	/** Facebook-scoped Instagram business account ID. */
+	FB_IG_USER_ID_UNDERWATER: string;
+	/** Facebook-scoped Instagram business account ID. */
+	FB_IG_USER_ID_PORTRAITS: string;
 	/**
 	 * Comma-separated HTTPS allowlist. Each entry must be an HTTPS URL
 	 * with no credentials, no path beyond "/", no query, and no fragment.
@@ -167,15 +169,15 @@ function routeFor(path: FeedSide, env: Env): FeedRoute {
 	if (path === "underwater") {
 		return {
 			credentials: {
-				userId: env.IG_COLLAB_USER_ID_UNDERWATER,
-				accessToken: env.IG_ACCESS_TOKEN_UNDERWATER,
+				userId: env.FB_IG_USER_ID_UNDERWATER,
+				accessToken: env.FB_ACCESS_TOKEN_UNDERWATER,
 			},
 		};
 	}
 	return {
 		credentials: {
-			userId: env.IG_COLLAB_USER_ID_PORTRAITS,
-			accessToken: env.IG_ACCESS_TOKEN_PORTRAITS,
+			userId: env.FB_IG_USER_ID_PORTRAITS,
+			accessToken: env.FB_ACCESS_TOKEN_PORTRAITS,
 		},
 	};
 }
@@ -963,8 +965,8 @@ function graphHealthCacheKey(
 ): string {
 	return [
 		graphApiVersion,
-		env.IG_COLLAB_USER_ID_UNDERWATER ?? "",
-		env.IG_COLLAB_USER_ID_PORTRAITS ?? "",
+		env.FB_IG_USER_ID_UNDERWATER ?? "",
+		env.FB_IG_USER_ID_PORTRAITS ?? "",
 		env.ALLOWED_ORIGIN ?? "",
 		requestOrigin ?? "",
 	].join("|");

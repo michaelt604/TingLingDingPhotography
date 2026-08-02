@@ -75,9 +75,17 @@ The browser checks require a completed `npm run build` and Python 3 on `PATH`.
 │   │   └── page.tsx
 │   ├── not-found.tsx             # Themed 404 route
 │   └── components/
-│       ├── SiteNav.tsx         # Top nav for the two side pages
-│       ├── InstagramFeed.tsx   # Worker-proxied Instagram feed
-│       ├── Contact.tsx         # mailto: inquiry form (portraits only)
+│       ├── SiteNav.tsx           # Top nav for the two side pages
+│       ├── InstagramFeed.tsx     # Worker-proxied feed (native carousels
+│       │                         #   with embed fallback for partner-owned posts)
+│       ├── instagramData.ts      # Feed payload validation / normalization
+│       ├── instagramFetch.ts     # Timeout-bounded fetches
+│       ├── instagramFeedState.ts # Placeholder / pagination display state
+│       ├── instagramImageUrl.ts  # /img resize URL rewriting
+│       ├── instagramEmbed.ts     # Official IG embed URL builder
+│       ├── Contact.tsx           # mailto: inquiry form (portraits only)
+│       ├── ContactProvider.tsx / ContactModal.tsx # Modal dialog + context
+│       ├── contactMailto.ts      # mailto: href builder
 │       └── Footer.tsx
 ├── public/                     # Static assets
 │   ├── favicon.svg
@@ -86,13 +94,13 @@ The browser checks require a completed `npm run build` and Python 3 on `PATH`.
 │   ├── sitemap.xml
 │   ├── og-default.svg / og-default.png
 │   ├── og-underwater.svg / og-portraits.svg
+│   ├── og-underwater.png / og-portraits.png
 │   ├── _headers                # Cloudflare security headers
 │   └── _redirects              # Cloudflare URL rewrites
 ├── workers/ig-proxy/            # Cloudflare Instagram Graph API proxy
 ├── next.config.mjs             # Static export config
 ├── tsconfig.json
-├── package.json
-└── moodboard/                  # Style reference (kept for context)
+└── package.json
 ```
 
 ---
@@ -178,8 +186,7 @@ between KV, the local L1, and browser caching.
 4. **Get each Instagram professional-account ID.** With a token that can access
    the linked Facebook Page, query the Page's `instagram_business_account` and
    copy its numeric `id`. The current deployment stores these Facebook-scoped
-   IDs as `IG_COLLAB_USER_ID_UNDERWATER` and `IG_COLLAB_USER_ID_PORTRAITS`;
-   those historical names are ID aliases, not additional access tokens.
+   IDs as `FB_IG_USER_ID_UNDERWATER` and `FB_IG_USER_ID_PORTRAITS`.
 
 5. **Generate one Facebook Page/System User token per account.** In Meta
    Business Settings, create or use a System User, assign the app plus the
@@ -189,12 +196,18 @@ between KV, the local L1, and browser caching.
    `/{ig-user-id}/media` and `/{ig-user-id}/collaborative_media` on
    `graph.facebook.com`.
 
-   Store the underwater credential in `IG_ACCESS_TOKEN_UNDERWATER` and the
-   portrait credential in `IG_ACCESS_TOKEN_PORTRAITS`. There are only two access
+   Store the underwater credential in `FB_ACCESS_TOKEN_UNDERWATER` and the
+   portrait credential in `FB_ACCESS_TOKEN_PORTRAITS`. There are only two access
    tokens: the Worker uses the matching account token for both feed edges. Do
    not use Instagram Login tokens or `graph.instagram.com` for this flow. Meta's
    maintained [Instagram API with Facebook Login documentation](https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api)
    describes the Page-token model and required permissions.
+
+   **Carousel behavior:** owned carousels — including collaborative posts the
+   account *started* — come back from `/media` with every slide inline, so they
+   render as native carousels. Carousels owned by *other* accounts (the account
+   is only a collaborator) cannot expose their slides through any Graph API
+   path, so those fall back to the official Instagram embed view.
 
 6. **Deploy the Worker** (the code is already in `workers/ig-proxy/`). The public production Worker is `https://ig-proxy.michaelt604.workers.dev`. GitHub Actions deploys this Worker from the repository root before uploading the Pages artifact on pushes to `main`. For a manual deployment, use the existing workspace tooling:
    ```bash
@@ -220,12 +233,14 @@ The Worker keeps one Page/System User token per account in Cloudflare secrets;
 tokens never enter KV. `/health` probes both accounts, caches the result for 30
 seconds, and never includes IDs or tokens in its response body. The account IDs
 are still present in the upstream Graph URL path, while tokens stay in the
-`Authorization` header. For a 401/error-190 outage, replace the two tokens and
+`Authorization` header. For a 401/error-190 outage, replace the four secrets and
 redeploy:
 
 ```powershell
-npx wrangler secret put IG_ACCESS_TOKEN_UNDERWATER --config workers/ig-proxy/wrangler.toml
-npx wrangler secret put IG_ACCESS_TOKEN_PORTRAITS --config workers/ig-proxy/wrangler.toml
+npx wrangler secret put FB_ACCESS_TOKEN_UNDERWATER --config workers/ig-proxy/wrangler.toml
+npx wrangler secret put FB_IG_USER_ID_UNDERWATER --config workers/ig-proxy/wrangler.toml
+npx wrangler secret put FB_ACCESS_TOKEN_PORTRAITS --config workers/ig-proxy/wrangler.toml
+npx wrangler secret put FB_IG_USER_ID_PORTRAITS --config workers/ig-proxy/wrangler.toml
 npm run deploy --workspace=ig-proxy
 Invoke-RestMethod https://ig-proxy.michaelt604.workers.dev/health
 Invoke-RestMethod https://ig-proxy.michaelt604.workers.dev/underwater
@@ -305,7 +320,7 @@ way to point it at Pages is to move DNS to Cloudflare.
 
 ### Environment variables
 
-The tracked `.env.production` points to `https://ig-proxy.michaelt604.workers.dev`. The Worker stores two Page/System User tokens in `IG_ACCESS_TOKEN_*` and pairs them with the existing Facebook-scoped `IG_COLLAB_USER_ID_*` IDs (historical names; they are not extra tokens). Both feed edges use `graph.facebook.com`; there is no separate collaborator token or OAuth callback.
+The tracked `.env.production` points to `https://ig-proxy.michaelt604.workers.dev`. The Worker stores two Page/System User tokens in `FB_ACCESS_TOKEN_*` and pairs them with the Facebook-scoped `FB_IG_USER_ID_*` IDs. Both feed edges use `graph.facebook.com`; there is no separate collaborator token or OAuth callback.
 
 
 ---
@@ -335,8 +350,7 @@ Most tweaks live in:
 - [ ] Real hero photos (swap from CSS placeholders)
 - [x] Pin and validate the production IG Worker URL
 - [x] Use two Page/System User tokens with dependency-aware health checks
-
-- [ ] Custom 404 page
+- [x] Custom 404 page
 - [x] Non-photographic Open Graph fallback (`public/og-default.png`, sourced from the adjacent SVG)
 - [x] Resize feed images through the ig-proxy `/img` route (KV-cached,
       Cloudflare Image Resizing); full `next/image` optimization is

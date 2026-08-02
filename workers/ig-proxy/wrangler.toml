@@ -11,10 +11,10 @@ binding = "IG_FEED_CACHE"
 id = "4a4fd8b71cb74d348b3c71e08d83b992"
 
 # Required secrets:
-#   IG_COLLAB_USER_ID_UNDERWATER (Facebook-host IG ID)
-#   IG_ACCESS_TOKEN_UNDERWATER
-#   IG_COLLAB_USER_ID_PORTRAITS (Facebook-host IG ID)
-#   IG_ACCESS_TOKEN_PORTRAITS
+#   FB_IG_USER_ID_UNDERWATER (Facebook-scoped IG business account ID)
+#   FB_ACCESS_TOKEN_UNDERWATER
+#   FB_IG_USER_ID_PORTRAITS (Facebook-scoped IG business account ID)
+#   FB_ACCESS_TOKEN_PORTRAITS
 #
 # Each Page/System User token serves both /media and /collaborative_media for
 # its account through graph.facebook.com.
