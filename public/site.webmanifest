@@ -4,8 +4,8 @@
   "description": "Underwater, nature, and portrait photography.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#06151c",
-  "theme_color": "#06151c",
+  "background_color": "#07111a",
+  "theme_color": "#07111a",
   "icons": [
     {
       "src": "/favicon.svg",

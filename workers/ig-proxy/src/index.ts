@@ -201,6 +201,7 @@ const CHILDREN_FIELDS = "id,media_type,media_url,permalink,thumbnail_url";
 // falls back to the parent's `media_url`.
 
 const CHILD_MEDIA_TYPES = new Set(["IMAGE", "VIDEO"]);
+const MAX_INLINE_CAROUSELS = 2;
 
 /**
  * Returns true when the URL is an HTTPS URL on Instagram's CDN or
@@ -310,10 +311,10 @@ async function fetchCarouselChildren(
 }
 
 /**
- * Augments a list of posts with inline `children` arrays for every
- * CAROUSEL_ALBUM entry. Posts of other media types are returned
- * unchanged. Failures to fetch a carousel's children are silent and
- * leave that post without `children` — the client falls back to the
+ * Augments the first two CAROUSEL_ALBUM entries with inline `children`
+ * arrays. Posts of other media types are returned unchanged. Failures to
+ * fetch a carousel's children, or entries beyond the page cap, are silent
+ * and leave that post without `children` — the client falls back to the
  * parent's `media_url`.
  */
 async function inlineCarouselChildren(
@@ -321,11 +322,14 @@ async function inlineCarouselChildren(
 	accessToken: string,
 	posts: Record<string, unknown>[],
 ): Promise<Record<string, unknown>[]> {
+	let expanded = 0;
 	return Promise.all(
 		posts.map(async (post) => {
 			if (post.media_type !== "CAROUSEL_ALBUM") return post;
 			const id = post.id;
 			if (typeof id !== "string") return post;
+			if (expanded >= MAX_INLINE_CAROUSELS) return post;
+			expanded += 1;
 			const children = await fetchCarouselChildren(
 				graphApiVersion,
 				id,
@@ -979,6 +983,27 @@ interface GraphHealth {
 	feeds: Record<FeedSide, FeedHealth>;
 }
 
+const GRAPH_HEALTH_CACHE_TTL_MS = 30_000;
+
+const graphHealthCache = new Map<string, {
+	expiresAt: number;
+	value: GraphHealth;
+}>();
+
+function graphHealthCacheKey(
+	env: Env,
+	graphApiVersion: string,
+	requestOrigin: string | null,
+): string {
+	return [
+		graphApiVersion,
+		env.IG_COLLAB_USER_ID_UNDERWATER ?? "",
+		env.IG_COLLAB_USER_ID_PORTRAITS ?? "",
+		env.ALLOWED_ORIGIN ?? "",
+		requestOrigin ?? "",
+	].join("|");
+}
+
 async function probeMedia(
 	graphApiVersion: string,
 	credentials: ApiCredentials,
@@ -995,7 +1020,15 @@ async function probeMedia(
 async function checkGraphHealth(
 	env: Env,
 	graphApiVersion: string,
+	requestOrigin: string | null,
 ): Promise<GraphHealth> {
+	const cacheKey = graphHealthCacheKey(env, graphApiVersion, requestOrigin);
+	const now = Date.now();
+	const cached = graphHealthCache.get(cacheKey);
+	if (cached && cached.expiresAt > now) return cached.value;
+	for (const [key, entry] of graphHealthCache) {
+		if (entry.expiresAt <= now) graphHealthCache.delete(key);
+	}
 	const underwaterRoute = routeFor("underwater", env);
 	const portraitsRoute = routeFor("portraits", env);
 	const [underwaterOwnedOk, underwaterCollaborativeOk, portraitsOwnedOk, portraitsCollaborativeOk] =
@@ -1021,7 +1054,7 @@ async function checkGraphHealth(
 				"collaborative_media",
 			),
 		]);
-	return {
+	const health = {
 		ok: underwaterOwnedOk && portraitsOwnedOk,
 		collaborativeReady:
 			underwaterCollaborativeOk && portraitsCollaborativeOk,
@@ -1037,6 +1070,11 @@ async function checkGraphHealth(
 			},
 		},
 	};
+	graphHealthCache.set(cacheKey, {
+		expiresAt: now + GRAPH_HEALTH_CACHE_TTL_MS,
+		value: health,
+	});
+	return health;
 }
 
 export default {
@@ -1088,7 +1126,11 @@ export default {
 		// Health check
 		const url = new URL(request.url);
 		if (url.pathname === "/" || url.pathname === "/health") {
-			const health = await checkGraphHealth(env, graphApiVersion);
+			const health = await checkGraphHealth(
+				env,
+				graphApiVersion,
+				requestOrigin,
+			);
 			return jsonResponse(
 				health,
 				effectiveOrigin,
@@ -1210,17 +1252,15 @@ export default {
 				});
 			}
 
-			const ownedPosts = await inlineCarouselChildren(
-				graphApiVersion,
-				route.credentials.accessToken,
+			const mergedPosts = mergeMediaPosts(
 				postsFromResult(mediaResult),
-			);
-			const collaborativePosts = await inlineCarouselChildren(
-				graphApiVersion,
-				route.credentials.accessToken,
 				postsFromResult(collaborativeResult),
 			);
-			const augmentedPosts = mergeMediaPosts(ownedPosts, collaborativePosts);
+			const augmentedPosts = await inlineCarouselChildren(
+				graphApiVersion,
+				route.credentials.accessToken,
+				mergedPosts,
+			);
 			const nextPagination: CompositeCursor = {
 				version: 3,
 				media: stateFromResult(pagination.media, mediaResult),

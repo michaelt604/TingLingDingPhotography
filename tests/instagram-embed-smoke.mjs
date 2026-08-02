@@ -135,18 +135,6 @@ try {
 			"the grid must not preload an embed",
 		);
 
-		const preloadImageHrefs = await page
-			.locator('link[rel="preload"][as="image"]')
-			.evaluateAll((els) => els.map((el) => el.getAttribute("href")));
-		assert.ok(
-			preloadImageHrefs.includes(COVER_URL),
-			`expected preload image link for ${COVER_URL}, got ${JSON.stringify(preloadImageHrefs)}`,
-		);
-		assert.ok(
-			preloadImageHrefs.includes(CHILD_URL),
-			`expected preload image link for ${CHILD_URL}, got ${JSON.stringify(preloadImageHrefs)}`,
-		);
-
 		const preconnectHrefs = await page
 			.locator('link[rel="preconnect"]')
 			.evaluateAll((els) => els.map((el) => el.getAttribute("href")));

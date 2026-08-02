@@ -10,8 +10,9 @@ export const metadata: Metadata = {
   alternates: { canonical: '/underwater/' },
   openGraph: {
     url: '/underwater/',
-    images: ['/og-default.png'],
+    images: [{ url: '/og-underwater.svg', width: 1200, height: 630, alt: 'Underwater and nature photography' }],
   },
+  twitter: { card: 'summary_large_image', images: ['/og-underwater.svg'] },
 };
 
 const IG_HANDLE = 'tinglingdingphotography';
@@ -23,7 +24,6 @@ export default function UnderwaterPage() {
       <SiteNav current="underwater" />
 
       <main id="main" tabIndex={-1}>
-        <h1 className="srOnly">The world below the surface.</h1>
 
         {/* INSTAGRAM — main content */}
         <InstagramFeed

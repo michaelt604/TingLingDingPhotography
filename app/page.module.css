@@ -66,7 +66,7 @@
   background:
     radial-gradient(ellipse 80% 60% at 30% 30%, #1a8a8a 0%, transparent 60%),
     radial-gradient(ellipse 70% 80% at 80% 80%, #2a5a7a 0%, transparent 60%),
-    radial-gradient(ellipse 90% 60% at 50% 50%, #0c2733 0%, #06151c 80%);
+    radial-gradient(ellipse 90% 60% at 50% 50%, #0c2733 0%, var(--accent-ink) 80%);
 }
 
 /* Portrait half — purple gradient */

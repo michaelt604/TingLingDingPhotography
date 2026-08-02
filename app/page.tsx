@@ -4,6 +4,7 @@ import styles from './page.module.css';
 export default function HubPage() {
   return (
     <main data-side="hub" className={styles.hub} id="main" tabIndex={-1}>
+      <h1 className="srOnly">TingLingDing Photography</h1>
       <div className={styles.split}>
         {/* UNDERWATER HALF
             The half is a div (not a link) so we can have the IG handle
@@ -18,9 +19,9 @@ export default function HubPage() {
             aria-label="Enter underwater & nature"
           />
           <div className={styles.halfContent}>
-            <h1 className={`display ${styles.halfTitle}`}>
+            <h2 className={`display ${styles.halfTitle}`}>
               Underwater<br />&amp; Nature
-            </h1>
+            </h2>
           </div>
           <a
             className={styles.halfHint}
@@ -42,9 +43,9 @@ export default function HubPage() {
             aria-label="Enter portraits"
           />
           <div className={styles.halfContent}>
-            <h1 className={`display ${styles.halfTitle}`}>
+            <h2 className={`display ${styles.halfTitle}`}>
               Portraits
-            </h1>
+            </h2>
           </div>
           <a
             className={styles.halfHint}

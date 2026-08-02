@@ -17,8 +17,10 @@
     "start": "next start",
     "lint": "biome lint app tests workers/ig-proxy/src workers/ig-proxy/test next.config.mjs",
     "test": "node --test tests/*.test.ts workers/ig-proxy/test/*.test.ts",
-    "test:smoke": "node tests/lightbox-smoke.mjs",
-    "test:grid-fade": "node tests/grid-fade-audit.mjs",
+    "test:lightbox-smoke": "node tests/lightbox-smoke.mjs",
+    "test:embed-smoke": "node tests/instagram-embed-smoke.mjs",
+    "test:lightbox-fade": "node tests/lightbox-fade-audit.mjs",
+    "test:grid-fade-audit": "node tests/grid-fade-audit.mjs",
     "typecheck": "tsc --noEmit && npm run typecheck --workspace=ig-proxy",
     "check": "npm run lint && npm test && npm run typecheck"
   },

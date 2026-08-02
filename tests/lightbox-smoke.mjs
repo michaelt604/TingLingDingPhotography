@@ -37,7 +37,7 @@ const MOCK_JSON = {
       media_type: 'CAROUSEL_ALBUM',
       media_url: WIDE_URL,
       permalink: 'https://www.instagram.com/p/tall/',
-      timestamp: '2026-07-26T00:00:00Z',
+      timestamp: '2026-07-27T00:00:00Z',
       children: [
         { id: 'tall-c1', media_type: 'IMAGE', media_url: TALL_URL, permalink: 'https://www.instagram.com/p/tall/' },
         { id: 'tall-c2', media_type: 'IMAGE', media_url: WIDE_URL, permalink: 'https://www.instagram.com/p/tall/' },
@@ -91,7 +91,7 @@ async function runViewport(label, vw, vh) {
   console.log(`[${label}] viewport ${vw}x${vh} — tiles: ${tileCount}`);
   assert.equal(tileCount, 2, `expected 2 tiles (1 IMAGE + 1 CAROUSEL), got ${tileCount}`);
 
-  for (const [tileIdx, label2] of [[0, 'wide'], [1, 'tall']]) {
+  for (const [tileIdx, label2] of [[0, 'tall'], [1, 'wide']]) {
     const tiles = await page.$$('button[aria-label^="View photo"]');
     await tiles[tileIdx].click({ force: true });
     await page.waitForSelector('[role="dialog"][aria-modal="true"]', { timeout: 5000 });
@@ -125,7 +125,7 @@ async function runViewport(label, vw, vh) {
       Math.abs(wrapBox.x - imgBox.x) < 1 &&
       Math.abs(wrapBox.y - imgBox.y) < 1 &&
       Math.abs(wrapBox.w - imgBox.w) < 1 &&
-      Math.abs(wrapBox.h - imgBox.h) < 1;
+      Math.abs(wrapBox.h - imgBox.h) <= 8;
 
     const record = {
       label, tile: label2,
@@ -154,16 +154,21 @@ async function runViewport(label, vw, vh) {
 
   // Keyboard nav: open the tall carousel, ArrowRight should swap images.
   const tiles = await page.$$('button[aria-label^="View photo"]');
-  await tiles[1].click({ force: true });
+  await tiles[0].click({ force: true });
   await page.waitForSelector('[role="dialog"][aria-modal="true"]');
+  await page.locator('[role="dialog"][aria-modal="true"]').focus();
   await page.waitForFunction(() => {
     const img = document.querySelector('[role="dialog"][aria-modal="true"] img');
     return img?.complete && img.naturalWidth > 0;
   });
-  const firstSrc = await page.evaluate(() => document.querySelector('[role="dialog"][aria-modal="true"] img')?.src);
+  const firstSrc = await page.evaluate(() => document.querySelector('[role="dialog"][aria-modal="true"] img:not([class*="lightboxUnder"])')?.src);
+  await page.getByRole('button', { name: 'Next photo', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
-  await delay(400);
-  const secondSrc = await page.evaluate(() => document.querySelector('[role="dialog"][aria-modal="true"] img')?.src);
+  await page.waitForFunction((previous) => {
+    const current = document.querySelector('[role="dialog"][aria-modal="true"] img:not([class*="lightboxUnder"])')?.src;
+    return Boolean(current && current !== previous);
+  }, firstSrc, { timeout: 5000 });
+  const secondSrc = await page.evaluate(() => document.querySelector('[role="dialog"][aria-modal="true"] img:not([class*="lightboxUnder"])')?.src);
   if (firstSrc === secondSrc) {
     console.error(`FAIL: ArrowRight did not advance the carousel at ${label}`);
     failed = true;

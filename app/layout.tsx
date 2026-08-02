@@ -1,14 +1,8 @@
 import type { Metadata, Viewport } from 'next';
-import { Anton, DM_Serif_Display, JetBrains_Mono, Outfit } from 'next/font/google';
+import { DM_Serif_Display, JetBrains_Mono, Outfit } from 'next/font/google';
 import { ContactProvider } from './components/ContactProvider';
 import './globals.css';
 
-const anton = Anton({
-  weight: '400',
-  subsets: ['latin'],
-  variable: '--font-anton',
-  display: 'swap',
-});
 const dmSerif = DM_Serif_Display({
   weight: '400',
   subsets: ['latin'],
@@ -75,7 +69,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#0a1424',
+  themeColor: '#07111a',
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
@@ -89,7 +83,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${anton.variable} ${dmSerif.variable} ${outfit.variable} ${jetBrainsMono.variable}`}
+      className={`${dmSerif.variable} ${outfit.variable} ${jetBrainsMono.variable}`}
     >
       <body>
         {/* Skip link — visible only when keyboard-focused, jumps past the sticky nav. */}

@@ -44,6 +44,18 @@ npx serve out        # or any static host
 The exported site lives in `./out/` — that's the directory Cloudflare Pages
 deploys.
 
+### Testing
+
+```bash
+npm run check                # lint, unit tests, and typecheck
+npm run test:lightbox-smoke  # Playwright lightbox smoke test
+npm run test:embed-smoke     # Playwright Instagram embed smoke test
+npm run test:lightbox-fade   # Playwright lightbox transition audit
+npm run test:grid-fade-audit # Playwright grid transition audit
+```
+
+The browser checks require a completed `npm run build` and Python 3 on `PATH`.
+
 ---
 
 ## Project layout
@@ -57,15 +69,14 @@ deploys.
 │   ├── page.module.css
 │   ├── underwater/             # Underwater & nature side
 │   │   ├── layout.tsx          # sets data-side="underwater"
-│   │   ├── page.tsx
-│   │   └── page.module.css
+│   │   └── page.tsx
 │   ├── portraits/              # Portraits side
 │   │   ├── layout.tsx          # sets data-side="portrait"
-│   │   ├── page.tsx
-│   │   └── page.module.css
+│   │   └── page.tsx
+│   ├── not-found.tsx             # Themed 404 route
 │   └── components/
 │       ├── SiteNav.tsx         # Top nav for the two side pages
-│       ├── InstagramFeed.tsx   # IG feed (placeholder until widget wired)
+│       ├── InstagramFeed.tsx   # Worker-proxied Instagram feed
 │       ├── Contact.tsx         # mailto: inquiry form (portraits only)
 │       └── Footer.tsx
 ├── public/                     # Static assets
@@ -73,8 +84,11 @@ deploys.
 │   ├── site.webmanifest
 │   ├── robots.txt
 │   ├── sitemap.xml
+│   ├── og-default.svg / og-default.png
+│   ├── og-underwater.svg / og-portraits.svg
 │   ├── _headers                # Cloudflare security headers
 │   └── _redirects              # Cloudflare URL rewrites
+├── workers/ig-proxy/            # Cloudflare Instagram Graph API proxy
 ├── next.config.mjs             # Static export config
 ├── tsconfig.json
 ├── package.json
@@ -89,8 +103,8 @@ Two aesthetic axes, no theme toggle:
 
 - **Side accent** — set per page via `data-side="underwater"` or
   `data-side="portrait"` (in each page's `layout.tsx`). Controls the accent
-  color (cyan vs. lavender/purple) and the display typeface (Anton vs. DM
-  Serif Display).
+  color (cyan vs. lavender/purple); both sides share the DM Serif Display
+  typeface for a more cohesive editorial feel.
 - **Hub split** — the homepage uses `data-side="hub"` and each half sets
   its own `data-half` for the accent.
 
@@ -203,8 +217,11 @@ between KV, the local L1, and browser caching.
 ### Token recovery
 
 The Worker keeps one Page/System User token per account in Cloudflare secrets;
-tokens never enter KV. `/health` probes both accounts without exposing IDs or
-tokens. For a 401/error-190 outage, replace the two tokens and redeploy:
+tokens never enter KV. `/health` probes both accounts, caches the result for 30
+seconds, and never includes IDs or tokens in its response body. The account IDs
+are still present in the upstream Graph URL path, while tokens stay in the
+`Authorization` header. For a 401/error-190 outage, replace the two tokens and
+redeploy:
 
 ```powershell
 npx wrangler secret put IG_ACCESS_TOKEN_UNDERWATER --config workers/ig-proxy/wrangler.toml
@@ -233,19 +250,10 @@ show. Skip unless you have a very specific "featured post" use case.
 
 ## Swapping the hero images
 
-For now, the heroes are CSS-only placeholders. When you have specific
-photos to feature:
-
-- **Underwater hero** — open `app/underwater/page.tsx` and replace the
-  `<div className={styles.heroBg}>` block with a Next.js `<Image />` (or
-  just a plain `<img>` if you want zero config) pointing at your asset.
-- **Portrait hero** — same idea. Replace or layer on top of the existing
-  hero container. The page already has a subtle purple gradient as a
-  default; you can either keep it as a backdrop or replace it.
-
-If you want image optimization, drop the photos into `public/photos/` and
-use `<Image src="/photos/your-file.jpg" ... />` from `next/image` after
-removing the `unoptimized: true` flag in `next.config.mjs`.
+The side pages currently use their live Instagram feeds as the image surface;
+the gradients in each page layout provide the visual fallback while the feed
+loads. If you later add curated hero photos, place them in `public/photos/` and
+render them from the relevant side page with `next/image`.
 
 ---
 
@@ -314,7 +322,7 @@ Most tweaks live in:
 | IG proxy URL | `NEXT_PUBLIC_IG_PROXY_URL` env var — points at your deployed `ig-proxy` Worker |
 | IG secrets (server-side) | Set in Cloudflare Worker via `wrangler secret put` (see Worker setup above) |
 | Accent colors | `app/globals.css` (`[data-side="underwater"]` and `[data-side="portrait"]` blocks) |
-| Hero gradient (per side) | `app/underwater/page.module.css` and `app/portraits/page.module.css` (3 slide variants) |
+| Side accents and gradients | `app/globals.css` and each side layout (`app/underwater/layout.tsx`, `app/portraits/layout.tsx`) |
 | Hub gradient colors | `app/page.module.css` (`.halfUnderwater .halfBg` and `.halfPortrait .halfBg`) |
 | Fonts | `app/layout.tsx` (`next/font`) + `app/globals.css` (`--ff-display`, `--ff-body`, etc.) |
 | Self-review screenshots | Daemon MCP bridge at `tools/mcp-bridge.cjs` — registered as "playwright" in `~/.mavis/mcp/mcp.json` |

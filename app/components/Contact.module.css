@@ -19,6 +19,17 @@
   margin-bottom: 40px;
 }
 
+.responseNote {
+  margin: -24px 0 32px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.responseNote strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+
 .form {
   display: flex;
   flex-direction: column;

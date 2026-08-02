@@ -1,0 +1,82 @@
+.notFound {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: clamp(40px, 8vw, 96px) clamp(20px, 4vw, 48px);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.notFound::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse 60% 50% at 30% 30%, rgba(62, 184, 175, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 60% at 80% 80%, rgba(164, 120, 208, 0.08) 0%, transparent 60%),
+    var(--bg);
+  pointer-events: none;
+}
+.inner {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 28px;
+}
+.code {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--ff-mono);
+  font-size: clamp(64px, 14vw, 128px);
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+.title {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--ff-display);
+  font-size: clamp(28px, 4vw, 40px);
+  letter-spacing: -0.005em;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+.subtitle {
+  max-width: 36em;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1.6;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font-family: var(--ff-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transition: color 200ms ease, border-color 200ms ease, background 200ms ease;
+}
+.link:hover { color: var(--ink); border-color: var(--ink); background: var(--line-soft); }
+.linkPrimary { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.linkPrimary:hover { color: var(--accent-ink); background: var(--accent-2); border-color: var(--accent-2); }
+.linkDot { font-size: 9px; line-height: 1; }
+@media (max-width: 480px) {
+  .actions { gap: 8px; }
+  .link { padding: 10px 16px; font-size: 10px; }
+}

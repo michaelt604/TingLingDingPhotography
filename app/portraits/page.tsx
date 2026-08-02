@@ -10,8 +10,9 @@ export const metadata: Metadata = {
   alternates: { canonical: '/portraits/' },
   openGraph: {
     url: '/portraits/',
-    images: ['/og-default.png'],
+    images: [{ url: '/og-portraits.svg', width: 1200, height: 630, alt: 'Portrait photography' }],
   },
+  twitter: { card: 'summary_large_image', images: ['/og-portraits.svg'] },
 };
 
 const IG_HANDLE = 'tinglingdingportraits';
@@ -23,7 +24,6 @@ export default function PortraitsPage() {
       <SiteNav current="portraits" />
 
       <main id="main" tabIndex={-1}>
-        <h1 className="srOnly">Portraits</h1>
         {/* INSTAGRAM — main content */}
         <InstagramFeed
           handle={IG_HANDLE}

@@ -870,6 +870,49 @@ test("merges owned and collaborative posts by descending timestamp, dedupes ids,
 	);
 });
 
+test("caps carousel child expansion per feed page", async () => {
+	let childrenCalls = 0;
+	await withWorkerMocks(
+		async (input, init) => {
+			const url = requestPath(input);
+			assert.equal(
+				new Headers(init?.headers).get("Authorization"),
+				"Bearer secret-2",
+			);
+			if (url.pathname.endsWith("/media")) {
+				return upstreamPage([
+					{ id: "carousel-a", media_type: "CAROUSEL_ALBUM", timestamp: "2026-01-03T00:00:00Z" },
+					{ id: "carousel-b", media_type: "CAROUSEL_ALBUM", timestamp: "2026-01-02T00:00:00Z" },
+					{ id: "carousel-c", media_type: "CAROUSEL_ALBUM", timestamp: "2026-01-01T00:00:00Z" },
+				]);
+			}
+			if (url.pathname.endsWith("/collaborative_media")) {
+				return upstreamPage([
+					{ id: "carousel-d", media_type: "CAROUSEL_ALBUM", timestamp: "2026-01-05T00:00:00Z" },
+					{ id: "carousel-e", media_type: "CAROUSEL_ALBUM", timestamp: "2026-01-03T00:00:00Z" },
+				]);
+			}
+			if (url.pathname.endsWith("/children")) {
+				childrenCalls += 1;
+				return Response.json({ data: [{ id: `child-${childrenCalls}`, media_type: "IMAGE", media_url: "https://cdninstagram.com/child.jpg" }] });
+			}
+			return new Response(null, { status: 404 });
+		},
+		async () => {
+			const response = await worker.fetch(
+				new Request("https://worker.test/portraits"),
+				readyEnv,
+			);
+			assert.equal(response.status, 200);
+			const body = (await response.json()) as { data: Array<Record<string, unknown>> };
+			assert.equal(childrenCalls, 2);
+			assert.equal(Array.isArray(body.data[0].children), true);
+			assert.equal(Array.isArray(body.data[1].children), true);
+			assert.equal("children" in body.data[2], false);
+		},
+	);
+});
+
 test("keeps tokens and upstream next URLs out of responses and cache keys", async () => {
 	const requestUrls: string[] = [];
 	await withWorkerMocks(
@@ -1472,6 +1515,13 @@ test("health probes actual Graph paths without exposing credentials", async () =
 				},
 			});
 			assert.equal(response.headers.get("Cache-Control"), "no-store");
+			const cachedResponse = await worker.fetch(
+				new Request("https://worker.test/health", {
+					headers: { Origin: "https://example.com" },
+				}),
+				readyEnv,
+			);
+			assert.equal(cachedResponse.status, 200);
 		},
 	);
 	assert.deepEqual(

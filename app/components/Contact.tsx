@@ -47,6 +47,41 @@ function Field({ id, label, value, onChange, type = 'text', textarea, required, 
   );
 }
 
+interface SelectFieldProps {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly string[];
+  required?: boolean;
+}
+
+function SelectField({ id, label, value, onChange, options, required }: SelectFieldProps) {
+  return (
+    <div className={styles.field}>
+      <label htmlFor={id} className={`mono ${styles.label}`}>{label}{required ? ' *' : ''}</label>
+      <select
+        id={id}
+        name={id}
+        className={styles.input}
+        value={value}
+        required={required}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">Select a session type</option>
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+      </select>
+    </div>
+  );
+}
+
+const sessionTypeOptions = [
+  'Portrait session',
+  'Underwater session',
+  'Editorial / commercial',
+  'Other',
+] as const;
+
 interface Props {
   heading?: string;
   headingId?: string;
@@ -70,6 +105,10 @@ export function Contact({
 }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [sessionType, setSessionType] = useState('');
+  const [timeframe, setTimeframe] = useState('');
+  const [location, setLocation] = useState('');
+  const [budgetUsage, setBudgetUsage] = useState('');
   const [topic, setTopic] = useState('');
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState('');
@@ -77,7 +116,16 @@ export function Contact({
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    const href = buildContactMailto({ name, email, topic, message });
+    const href = buildContactMailto({
+      name,
+      email,
+      sessionType,
+      timeframe,
+      location,
+      budgetUsage,
+      topic,
+      message,
+    });
     setStatus(
       'Your email app should open with this message. If it does not, use the direct email link below.',
     );
@@ -94,6 +142,7 @@ export function Contact({
       <div className="container">
         <div className={styles.inner}>
           <h2 className={styles.title} id={headingId}>{heading}</h2>
+          <p className={styles.responseNote}>I usually reply within <strong>2 business days</strong>.</p>
 
           <form
             className={styles.form}
@@ -120,6 +169,41 @@ export function Contact({
                 required
               />
             </div>
+
+            <SelectField
+              id="contact-session-type"
+              label="Session type"
+              value={sessionType}
+              onChange={setSessionType}
+              options={sessionTypeOptions}
+              required
+            />
+
+            <div className={styles.row}>
+              <Field
+                id="contact-timeframe"
+                label="Date / timeframe"
+                value={timeframe}
+                onChange={setTimeframe}
+                placeholder="e.g. October 2026 or flexible"
+              />
+              <Field
+                id="contact-location"
+                label="Location"
+                value={location}
+                onChange={setLocation}
+                autoComplete="address-level2"
+                placeholder="City, venue, or remote"
+              />
+            </div>
+
+            <Field
+              id="contact-budget-usage"
+              label="Budget / usage"
+              value={budgetUsage}
+              onChange={setBudgetUsage}
+              placeholder="e.g. $1,500–$2,500 or personal use"
+            />
 
             <Field
               id="contact-topic"

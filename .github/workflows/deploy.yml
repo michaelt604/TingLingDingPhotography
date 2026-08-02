@@ -43,6 +43,17 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: 1
 
+      - name: Guard the static export against a local Worker URL
+        run: |
+          if grep -RIl --exclude='*.map' --include='*.js' --include='*.mjs' --include='*.css' --include='*.html' --include='*.json' 'http://127\.0\.0\.1' out; then
+            echo 'The static export contains a local Instagram proxy URL.' >&2
+            exit 1
+          fi
+          grep -RIl --exclude='*.map' 'https://ig-proxy.michaelt604.workers.dev' out >/dev/null || {
+            echo 'The static export is missing the production Instagram proxy URL.' >&2
+            exit 1
+          }
+
       - name: Upload static export
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

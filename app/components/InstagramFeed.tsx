@@ -8,7 +8,6 @@ import {
 	type RefObject,
 	useCallback,
 	useEffect,
-	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -20,6 +19,7 @@ import {
 } from "./instagramData";
 import { getInstagramEmbedUrl } from "./instagramEmbed";
 import { getInstagramFeedDisplayState } from "./instagramFeedState";
+import { fetchWithTimeout } from "./instagramFetch";
 
 interface Props {
 	/** IG handle without the @ */
@@ -92,32 +92,6 @@ function normalizeCursor(next: unknown): string | null {
 	return next;
 }
 /**
- * Mirrors the validation in `instagramData.ts` for the URLs we
- * forward into resource-hint `<link>` tags. The parent posts are
- * already validated by `normalizeInstagramPosts`, but the CAROUSEL
- * `children` payload is cast at the client boundary and never runs
- * through that filter — we re-validate every URL here so an
- * attacker-controlled child can't smuggle a non-IG origin into a
- * `<link rel="preload">` (or a preconnect).
- */
-function isInstagramMediaUrl(value: unknown): value is string {
-	if (typeof value !== "string") return false;
-	try {
-		const url = new URL(value);
-		if (url.protocol !== "https:") return false;
-		const hostname = url.hostname;
-		return (
-			hostname === "cdninstagram.com" ||
-			hostname.endsWith(".cdninstagram.com") ||
-			hostname === "fbcdn.net" ||
-			hostname.endsWith(".fbcdn.net")
-		);
-	} catch {
-		return false;
-	}
-}
-
-/**
  * InstagramFeed
  * Renders the IG feed section for a side page.
  *
@@ -157,14 +131,15 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 	// page into the wrong lifecycle's grid.
 	const lifecycleTokenRef = useRef(0);
 
-	useEffect(() => {
-		if (!proxyUrl) return; // No proxy URL configured — show placeholder
-		// Bump the lifecycle token on entry; any in-flight `fetchNextPage`
-		// from the previous lifecycle now sees a stale token and bails
-		// before it can call a setter. Cleared `isLoadingMore` /
-		// `loadMoreError` here too so a late pagination response can't
-		// strand the new lifecycle in a stale loading-or-error state
-		// (the pagination guards short-circuit on `isLoadingMore`).
+	// Initial-fetch entry point. Re-used by the mount/`side`/`proxyUrl`
+	// effect AND by the initial-load Retry button so both paths funnel
+	// through the same lifecycle guards: bumping the token invalidates
+	// any in-flight response, resetting the state prevents a previous
+	// failure from leaking into the new attempt, and the `cancelled`
+	// closure short-circuits setters if the effect cleanup runs while
+	// the request is still pending.
+	const runInitialFetch = useCallback(() => {
+		if (!proxyUrl) return;
 		const token = ++lifecycleTokenRef.current;
 		let cancelled = false;
 		setError(null);
@@ -174,7 +149,7 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 		setIsLoadingMore(false);
 		setHasInitialLoaded(false);
 		const url = `${proxyUrl.replace(/\/$/, "")}/${side}`;
-		fetch(url)
+		fetchWithTimeout(url)
 			.then((r) => {
 				if (!r.ok) throw new Error(`Proxy ${r.status}`);
 				return r.json() as Promise<FeedResponse>;
@@ -191,16 +166,28 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 			})
 			.catch((e) => {
 				if (!cancelled && lifecycleTokenRef.current === token)
-					setError(String(e?.message || e));
+					setError(e instanceof Error ? e.message : String(e));
 			})
 			.finally(() => {
 				if (!cancelled && lifecycleTokenRef.current === token)
 					setHasInitialLoaded(true);
-			});
+		});
 		return () => {
 			cancelled = true;
+			lifecycleTokenRef.current += 1;
 		};
 	}, [proxyUrl, side]);
+
+	useEffect(() => {
+		return runInitialFetch();
+	}, [runInitialFetch]);
+
+	// Initial-load Retry. User-driven only — re-runs the same lifecycle
+	// path (token bump + state reset + fetch) so a failed initial
+	// request can be retried without touching the side/proxyUrl state.
+	const handleInitialRetry = useCallback(() => {
+		runInitialFetch();
+	}, [runInitialFetch]);
 
 	// Build the proxy URL for the next page. `nextCursor` is the opaque
 	// value we stored from the previous response — we never re-parse it
@@ -255,9 +242,13 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 			// Reading the ref here (not in a state) means we always see the
 			// latest value without re-creating this callback.
 			const token = lifecycleTokenRef.current;
+			if (force) {
+				loadMoreErrorRef.current = null;
+				setLoadMoreError(null);
+			}
 			setIsLoadingMore(true);
 			try {
-				const response = await fetch(nextPageUrl);
+				const response = await fetchWithTimeout(nextPageUrl);
 				// Bail before reading the body if the lifecycle ended while the
 				// network round-trip was in flight.
 				if (lifecycleTokenRef.current !== token) return;
@@ -333,71 +324,6 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 			nextCursor,
 			hasInitialLoaded,
 		});
-	// Feed-level resource hints. We deliberately warm only the near-term
-	// surface the user is about to see — i.e. the parent/current media
-	// each post renders by default (video thumbnail preferred, otherwise
-	// media_url), plus up to the first two inlined CAROUSEL_ALBUM child
-	// display URLs (same video-thumbnail-first rule). Preloading every
-	// parent, thumbnail, and carousel child would burn bandwidth and
-	// connection slots on assets the user is unlikely to scroll to;
-	// the global `MAX_PRELOAD_URLS` cap (12) keeps the hint set bounded
-	// regardless of how many posts the proxy returns. We still re-validate
-	// every candidate URL (children are cast at the boundary and never run
-	// through the importer's filter) so an untrusted URL can never reach
-	// a `<link rel="preload">`. Preconnect origins are derived solely
-	// from the URLs that survived the cap, and the explicit instagram.com
-	// preconnect stays in the JSX so the click-through iframe mount
-	// always has a warm handshake regardless of post origin mix.
-	const fedHintHrefs = useMemo(() => {
-		const MAX_PRELOAD_URLS = 12;
-		const MAX_CAROUSEL_CHILDREN = 2;
-		const urls = new Set<string>();
-		// `push` enforces the global cap; once we hit the limit we stop
-		// considering further URLs and ignore duplicates from later
-		// passes through the same candidate set.
-		const push = (rawUrl: unknown) => {
-			if (urls.size >= MAX_PRELOAD_URLS) return;
-			if (!isInstagramMediaUrl(rawUrl)) return;
-			urls.add(rawUrl);
-		};
-		for (const post of posts) {
-			// VIDEO posts render the player thumbnail (media_url is the
-			// video file itself); IMAGE / CAROUSEL parents use media_url.
-			push(post.thumbnail_url ?? post.media_url);
-			if (
-				post.media_type === "CAROUSEL_ALBUM" &&
-				Array.isArray(post.children)
-			) {
-				let taken = 0;
-				for (const child of post.children) {
-					if (taken >= MAX_CAROUSEL_CHILDREN) break;
-					if (urls.size >= MAX_PRELOAD_URLS) break;
-					// Same video-thumbnail-first rule for children.
-					push(child.thumbnail_url ?? child.media_url);
-					taken += 1;
-				}
-			}
-			if (urls.size >= MAX_PRELOAD_URLS) break;
-		}
-		const preloadUrls = [...urls];
-		// Per-host preconnect hrefs must come from the URLs we actually
-		// preload — `instagram.com` and `fbcdn.net` images frequently land
-		// on unique subdomains, so per-host preconnects (not the apex)
-		// are what actually warm the real tile fetch. Use `origin`
-		// (scheme + host + explicit non-default port) for the preconnect
-		// href so the browser can match against the upcoming fetch.
-		const origins = new Set<string>();
-		for (const rawUrl of preloadUrls) {
-			try {
-				const origin = new URL(rawUrl).origin;
-				if (origin) origins.add(origin);
-			} catch {
-				// URL is already validated by `isInstagramMediaUrl`; this
-				// block is unreachable but keeps the loop total.
-			}
-		}
-		return { preloadUrls, preconnectOrigins: [...origins] };
-	}, [posts]);
 
 	// Show the placeholder when we know there's nothing to render — i.e.
 	// either the first fetch has completed and returned nothing, or the
@@ -411,45 +337,15 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 			aria-label={`Latest posts from @${handle}`}
 		>
 			<div className="container">
-				<FeedHeader handle={handle} profileUrl={profileUrl} />
+				<FeedHeader handle={handle} profileUrl={profileUrl} side={side} />
 
 				{showRealPosts ? (
 					<>
-						{/*
-              Feed-level resource hints. The image preloads warm the
-              actual tile fetches; the explicit instagram.com preconnect
-              warms the handshake that the click-through iframe will
-              reuse. The iframe document itself is intentionally NOT
-              preloaded: cross-origin iframe preloads are unreliable
-              (browsers frequently drop them or fail to apply the
-              credentials mode), and `crossOrigin="anonymous"` on a
-              preload would silently break the authed embed fetch.
-              Relying on the preconnect + on-demand iframe mount gives
-              a fast-enough experience without that footgun.
-             */}
-						<div aria-hidden="true">
-							<link
-								rel="preconnect"
-								href="https://www.instagram.com/"
-								crossOrigin="anonymous"
-							/>
-							{fedHintHrefs.preconnectOrigins.map((origin) => (
-								<link
-									key={`preconnect-${origin}`}
-									rel="preconnect"
-									href={origin}
-									crossOrigin="anonymous"
-								/>
-							))}
-							{fedHintHrefs.preloadUrls.map((imageUrl) => (
-								<link
-									key={`preload-${imageUrl}`}
-									rel="preload"
-									as="image"
-									href={imageUrl}
-								/>
-							))}
-						</div>
+						<link
+							rel="preconnect"
+							href="https://www.instagram.com/"
+							crossOrigin="anonymous"
+						/>
 						<div className={styles.grid}>
 							{posts.map((post) => (
 								<PostTile key={post.id} post={post} handle={handle} />
@@ -498,6 +394,11 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 							)}
 						</div>
 					</>
+				) : !hasInitialLoaded && proxyUrl ? (
+					<div className={styles.initialLoading} role="status" aria-live="polite">
+						<span className={styles.loadingDot} aria-hidden="true" />
+						Loading the latest work…
+					</div>
 				) : showPlaceholder ? (
 					<div className={styles.placeholder} role="status">
 						<p className={styles.placeholderTitle}>
@@ -517,6 +418,17 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 						>
 							View Instagram profile
 						</a>
+						{proxyUrl && error ? (
+							<div className={styles.retryBlock}>
+								<button
+									type="button"
+									className={styles.retryButton}
+									onClick={handleInitialRetry}
+								>
+									Retry
+								</button>
+							</div>
+						) : null}
 					</div>
 				) : null}
 				{!showRealPosts && showPagination ? (
@@ -684,6 +596,7 @@ function PostTile({ post, handle }: PostTileProps) {
 			suppressClick.current = false;
 			return;
 		}
+		setTransition(null);
 		setLightboxOpen(true);
 	}, []);
 	const closeLightbox = useCallback(() => {
@@ -850,6 +763,8 @@ function TileImageButton({
 	onPointerDown,
 	onPointerUp,
 }: TileImageButtonProps) {
+	const [imageErrorSrc, setImageErrorSrc] = useState<string | null>(null);
+	const imageError = imageErrorSrc === src;
 	return (
 		<button
 			ref={triggerRef}
@@ -867,8 +782,17 @@ function TileImageButton({
 				sizes="(min-width: 1024px) 30vw, (min-width: 540px) 33vw, 50vw"
 				unoptimized
 				className={`${styles.tileImage}${transitionDirection ? ` ${transitionDirection === 1 ? styles.tileImageEnterNext : styles.tileImageEnterPrev}` : ""}`}
-				onLoad={() => onImageLoad(src)}
+				onLoad={() => {
+					setImageErrorSrc(null);
+					onImageLoad(src);
+				}}
+				onError={() => setImageErrorSrc(src)}
 			/>
+			{imageError ? (
+				<span className={styles.tileImageError} role="status">
+					Image unavailable
+				</span>
+			) : null}
 		</button>
 	);
 }
@@ -963,6 +887,18 @@ function Lightbox({
 				onClose();
 				return;
 			}
+		};
+		document.addEventListener("keydown", handleKey);
+		return () => document.removeEventListener("keydown", handleKey);
+	}, [onClose]);
+	const handleBackdropClick = useCallback(
+		(event: MouseEvent<HTMLDivElement>) => {
+			if (event.target === event.currentTarget) onClose();
+		},
+		[onClose],
+	);
+	const handleBackdropKeyDown = useCallback(
+		(event: ReactKeyboardEvent<HTMLDivElement>) => {
 			if (event.key === "ArrowLeft" && canPrev) {
 				event.preventDefault();
 				handlePrev();
@@ -973,18 +909,29 @@ function Lightbox({
 				handleNext();
 				return;
 			}
-		};
-		document.addEventListener("keydown", handleKey);
-		return () => document.removeEventListener("keydown", handleKey);
-	}, [onClose, handlePrev, handleNext, canPrev, canNext]);
-	const handleBackdropClick = useCallback(
-		(event: MouseEvent<HTMLDivElement>) => {
-			if (event.target === event.currentTarget) onClose();
-		},
-		[onClose],
-	);
-	const handleBackdropKeyDown = useCallback(
-		(event: ReactKeyboardEvent<HTMLDivElement>) => {
+			if (event.key === "Tab") {
+				const focusable = Array.from(
+					event.currentTarget.querySelectorAll<HTMLElement>(
+						'button:not([disabled]), a[href], iframe, [tabindex]:not([tabindex="-1"])',
+					),
+				);
+				if (focusable.length === 0) {
+					event.preventDefault();
+					closeButtonRef.current?.focus();
+					return;
+				}
+				const first = focusable[0];
+				const last = focusable.at(-1);
+				if (!first || !last) return;
+				if (event.shiftKey && document.activeElement === first) {
+					event.preventDefault();
+					last.focus();
+				} else if (!event.shiftKey && document.activeElement === last) {
+					event.preventDefault();
+					first.focus();
+				}
+				return;
+			}
 			if (
 				event.target === event.currentTarget &&
 				(event.key === "Enter" || event.key === " ")
@@ -993,7 +940,7 @@ function Lightbox({
 				onClose();
 			}
 		},
-		[onClose],
+		[canNext, canPrev, handleNext, handlePrev, onClose],
 	);
 	const swipeStart = useRef<{ x: number; y: number } | null>(null);
 	const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
@@ -1022,8 +969,8 @@ function Lightbox({
 		setTransition(null);
 	}, []);
 	useEffect(() => {
-		if (embedUrl) closeButtonRef.current?.focus();
-	}, [embedUrl]);
+		closeButtonRef.current?.focus();
+	}, []);
 	return (
 		<div
 			className={`${styles.lightbox} ${styles.lightboxOpen}`}
@@ -1158,11 +1105,14 @@ function Lightbox({
 interface FeedHeaderProps {
 	handle: string;
 	profileUrl: string;
+	side: "underwater" | "portraits";
 }
 
-function FeedHeader({ handle, profileUrl }: FeedHeaderProps) {
+function FeedHeader({ handle, profileUrl, side }: FeedHeaderProps) {
+	const title = side === "underwater" ? "Underwater & Nature" : "Portraits";
 	return (
 		<header className={styles.head}>
+			<h1 className={`display ${styles.title}`}>{title}</h1>
 			<a
 				className={styles.follow}
 				href={profileUrl}
