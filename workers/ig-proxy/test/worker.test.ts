@@ -866,7 +866,7 @@ test("merges owned and collaborative posts by descending timestamp, dedupes ids,
 	);
 });
 
-test("inline children are normalized for owned and collaborative carousels without extra requests", async () => {
+test("carousels the list edges did not expand inline fall back to per-post children fetches", async () => {
 	let childrenCalls = 0;
 	await withWorkerMocks(
 		async (input, init) => {
@@ -879,24 +879,35 @@ test("inline children are normalized for owned and collaborative carousels witho
 				id,
 				media_type: "CAROUSEL_ALBUM",
 				timestamp,
-				children: {
-					data: [
-						{
-							id: `child-${id}`,
-							media_type: "IMAGE",
-							media_url: `https://cdninstagram.com/child-${id}.jpg`,
-						},
-					],
-				},
 			});
 			if (url.pathname.endsWith("/media")) {
+				// Owned edge: inline children are populated, but one post
+				// comes back with an empty connection and one with none.
 				return upstreamPage([
-					carousel("carousel-a", "2026-01-03T00:00:00Z"),
+					{
+						id: "carousel-a",
+						media_type: "CAROUSEL_ALBUM",
+						timestamp: "2026-01-03T00:00:00Z",
+						children: {
+							data: [
+								{
+									id: "child-carousel-a",
+									media_type: "IMAGE",
+									media_url: "https://cdninstagram.com/child-carousel-a.jpg",
+								},
+							],
+						},
+					},
 					carousel("carousel-b", "2026-01-02T00:00:00Z"),
-					carousel("carousel-c", "2026-01-01T00:00:00Z"),
+					{
+						...carousel("carousel-c", "2026-01-01T00:00:00Z"),
+						children: { data: [] },
+					},
 				]);
 			}
 			if (url.pathname.endsWith("/collaborative_media")) {
+				// Collaborative edge: carousels come back without any
+				// inline children, so the fallback must fetch them.
 				return upstreamPage([
 					carousel("carousel-d", "2026-01-05T00:00:00Z"),
 					carousel("carousel-e", "2026-01-03T00:00:00Z"),
@@ -904,7 +915,17 @@ test("inline children are normalized for owned and collaborative carousels witho
 			}
 			if (url.pathname.endsWith("/children")) {
 				childrenCalls += 1;
-				return new Response(null, { status: 404 });
+				const parentId = url.pathname.split("/")[2];
+				assert.match(url.pathname, /^\/v25\.0\/[^/]+\/children$/);
+				return Response.json({
+					data: [
+						{
+							id: `child-${parentId}`,
+							media_type: "IMAGE",
+							media_url: `https://cdninstagram.com/child-${parentId}.jpg`,
+						},
+					],
+				});
 			}
 			return new Response(null, { status: 404 });
 		},
@@ -915,16 +936,17 @@ test("inline children are normalized for owned and collaborative carousels witho
 			);
 			assert.equal(response.status, 200);
 			const body = (await response.json()) as { data: Array<Record<string, unknown>> };
-			assert.equal(childrenCalls, 0);
+			assert.equal(childrenCalls, 4);
 			assert.deepEqual(
 				body.data.map((post) => post.id),
 				["carousel-d", "carousel-a", "carousel-e", "carousel-b", "carousel-c"],
 			);
 			for (const post of body.data) {
-				assert.equal(Array.isArray(post.children), true, `${post.id} must keep its inline children`);
+				assert.equal(Array.isArray(post.children), true, `${post.id} must have children`);
 				assert.equal(
 					(post.children as Array<{ id: string }>)[0]?.id,
 					`child-${post.id}`,
+					`${post.id} children must come from its own fetch`,
 				);
 			}
 		},
