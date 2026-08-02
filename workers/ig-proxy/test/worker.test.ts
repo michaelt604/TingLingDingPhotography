@@ -802,6 +802,15 @@ test("merges owned and collaborative posts by descending timestamp, dedupes ids,
 						id: "carousel",
 						media_type: "CAROUSEL_ALBUM",
 						timestamp: "2026-01-01T00:00:00Z",
+						children: {
+							data: [
+								{
+									id: "child",
+									media_type: "IMAGE",
+									media_url: "https://cdninstagram.com/child.jpg",
+								},
+							],
+						},
 					},
 				]);
 			}
@@ -818,17 +827,6 @@ test("merges owned and collaborative posts by descending timestamp, dedupes ids,
 						timestamp: "2026-01-02T00:00:00Z",
 					},
 				]);
-			}
-			if (url.pathname.endsWith("/carousel/children")) {
-				return Response.json({
-					data: [
-						{
-							id: "child",
-							media_type: "IMAGE",
-							media_url: "https://cdninstagram.com/child.jpg",
-						},
-					],
-				});
 			}
 			return new Response(null, { status: 404 });
 		},
@@ -852,26 +850,23 @@ test("merges owned and collaborative posts by descending timestamp, dedupes ids,
 					media_url: "https://cdninstagram.com/child.jpg",
 				},
 			]);
-			const listCalls = calls.filter(
-				(url) => !url.pathname.endsWith("/children"),
+			assert.deepEqual(
+				calls.map((url) => url.pathname).sort(),
+				["/v25.0/3/collaborative_media", "/v25.0/3/media"],
 			);
-			assert.deepEqual(listCalls.map((url) => url.pathname).sort(), [
-				"/v25.0/3/collaborative_media",
-				"/v25.0/3/media",
-			]);
-			for (const url of listCalls) {
+			for (const url of calls) {
 				assert.equal(url.hostname, "graph.facebook.com");
 				assert.equal(url.searchParams.get("limit"), "9");
 				assert.equal(
 					url.searchParams.get("fields"),
-					"id,media_type,media_url,permalink,thumbnail_url,caption,timestamp",
+					"id,media_type,media_url,permalink,thumbnail_url,caption,timestamp,children{id,media_type,media_url,permalink,thumbnail_url}",
 				);
 			}
 		},
 	);
 });
 
-test("caps carousel child expansion per feed page", async () => {
+test("inline children are normalized for owned and collaborative carousels without extra requests", async () => {
 	let childrenCalls = 0;
 	await withWorkerMocks(
 		async (input, init) => {
@@ -880,22 +875,36 @@ test("caps carousel child expansion per feed page", async () => {
 				new Headers(init?.headers).get("Authorization"),
 				"Bearer secret-2",
 			);
+			const carousel = (id: string, timestamp: string) => ({
+				id,
+				media_type: "CAROUSEL_ALBUM",
+				timestamp,
+				children: {
+					data: [
+						{
+							id: `child-${id}`,
+							media_type: "IMAGE",
+							media_url: `https://cdninstagram.com/child-${id}.jpg`,
+						},
+					],
+				},
+			});
 			if (url.pathname.endsWith("/media")) {
 				return upstreamPage([
-					{ id: "carousel-a", media_type: "CAROUSEL_ALBUM", timestamp: "2026-01-03T00:00:00Z" },
-					{ id: "carousel-b", media_type: "CAROUSEL_ALBUM", timestamp: "2026-01-02T00:00:00Z" },
-					{ id: "carousel-c", media_type: "CAROUSEL_ALBUM", timestamp: "2026-01-01T00:00:00Z" },
+					carousel("carousel-a", "2026-01-03T00:00:00Z"),
+					carousel("carousel-b", "2026-01-02T00:00:00Z"),
+					carousel("carousel-c", "2026-01-01T00:00:00Z"),
 				]);
 			}
 			if (url.pathname.endsWith("/collaborative_media")) {
 				return upstreamPage([
-					{ id: "carousel-d", media_type: "CAROUSEL_ALBUM", timestamp: "2026-01-05T00:00:00Z" },
-					{ id: "carousel-e", media_type: "CAROUSEL_ALBUM", timestamp: "2026-01-03T00:00:00Z" },
+					carousel("carousel-d", "2026-01-05T00:00:00Z"),
+					carousel("carousel-e", "2026-01-03T00:00:00Z"),
 				]);
 			}
 			if (url.pathname.endsWith("/children")) {
 				childrenCalls += 1;
-				return Response.json({ data: [{ id: `child-${childrenCalls}`, media_type: "IMAGE", media_url: "https://cdninstagram.com/child.jpg" }] });
+				return new Response(null, { status: 404 });
 			}
 			return new Response(null, { status: 404 });
 		},
@@ -906,10 +915,18 @@ test("caps carousel child expansion per feed page", async () => {
 			);
 			assert.equal(response.status, 200);
 			const body = (await response.json()) as { data: Array<Record<string, unknown>> };
-			assert.equal(childrenCalls, 2);
-			assert.equal(Array.isArray(body.data[0].children), true);
-			assert.equal(Array.isArray(body.data[1].children), true);
-			assert.equal("children" in body.data[2], false);
+			assert.equal(childrenCalls, 0);
+			assert.deepEqual(
+				body.data.map((post) => post.id),
+				["carousel-d", "carousel-a", "carousel-e", "carousel-b", "carousel-c"],
+			);
+			for (const post of body.data) {
+				assert.equal(Array.isArray(post.children), true, `${post.id} must keep its inline children`);
+				assert.equal(
+					(post.children as Array<{ id: string }>)[0]?.id,
+					`child-${post.id}`,
+				);
+			}
 		},
 	);
 });

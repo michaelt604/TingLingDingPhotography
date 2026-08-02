@@ -180,28 +180,25 @@ function routeFor(path: FeedSide, env: Env): FeedRoute {
 	};
 }
 
-const MEDIA_FIELDS =
-	"id,media_type,media_url,permalink,thumbnail_url,caption,timestamp";
-
-// Fields we ask for when listing the children of a CAROUSEL_ALBUM post.
+// Fields we ask for when expanding a CAROUSEL_ALBUM post's slides.
 // Children don't have a `caption` or `timestamp` — those live on the
 // parent — and their `permalink` is optional (IG omits it on some
 // children), so we don't require it.
 const CHILDREN_FIELDS = "id,media_type,media_url,permalink,thumbnail_url";
 
+// IG returns CAROUSEL_ALBUM posts with only the first slide in the
+// parent's `media_url`. We request `children` inline via field
+// expansion so every carousel comes back with its full slide list in
+// the same request — no per-carousel round trips, and it works for
+// /collaborative_media posts where the account's token may not have
+// access to the owner's `/children` edge.
+const MEDIA_FIELDS = `id,media_type,media_url,permalink,thumbnail_url,caption,timestamp,children{${CHILDREN_FIELDS}}`;
+
 // ──────────────────────────────────────────────────────────────────
 // Carousel child normalization
 // ──────────────────────────────────────────────────────────────────
-//
-// IG returns CAROUSEL_ALBUM posts with only the first child's media in
-// the parent's `media_url`. To render real per-image navigation we
-// also fetch each carousel's children and inline them in the response
-// as `post.children`. Failures to fetch a carousel's children are
-// silent — the post is returned without `children` and the client
-// falls back to the parent's `media_url`.
 
 const CHILD_MEDIA_TYPES = new Set(["IMAGE", "VIDEO"]);
-const MAX_INLINE_CAROUSELS = 2;
 
 /**
  * Returns true when the URL is an HTTPS URL on Instagram's CDN or
@@ -281,63 +278,21 @@ function normalizeCarouselChildren(payload: unknown): unknown[] {
 }
 
 /**
- * Fetches the children of a single CAROUSEL_ALBUM post. Returns the
- * normalized array, or an empty array on any failure (which the caller
- * treats as "fall back to the parent's media_url").
+ * Normalizes the inline `children` connection the Graph list edges
+ * return for CAROUSEL_ALBUM posts (`children: { data: [...] }`) into
+ * the flat array the client expects. Posts that came back without
+ * children — or whose children are empty or malformed — are returned
+ * unchanged so the client falls back to the parent's `media_url` and
+ * the embed view.
  */
-async function fetchCarouselChildren(
-	graphApiVersion: string,
-	parentId: string,
-	accessToken: string,
-): Promise<unknown[]> {
-	const url =
-		`https://${GRAPH_API_HOST}/${graphApiVersion}/${encodeURIComponent(parentId)}/children` +
-		`?fields=${CHILDREN_FIELDS}&limit=10`;
-	try {
-		const response = await fetch(url, {
-			headers: { Authorization: `Bearer ${accessToken}` },
-		});
-		if (!response.ok) return [];
-		const payload = await response.json();
-		return normalizeCarouselChildren(payload);
-	} catch (error) {
-		console.error(
-			"Instagram carousel children request failed",
-			parentId,
-			error instanceof Error ? error.name : "UnknownError",
-		);
-		return [];
+function applyInlineChildren(
+	post: Record<string, unknown>,
+): Record<string, unknown> {
+	if (post.media_type !== "CAROUSEL_ALBUM" || post.children === undefined) {
+		return post;
 	}
-}
-
-/**
- * Augments the first two CAROUSEL_ALBUM entries with inline `children`
- * arrays. Posts of other media types are returned unchanged. Failures to
- * fetch a carousel's children, or entries beyond the page cap, are silent
- * and leave that post without `children` — the client falls back to the
- * parent's `media_url`.
- */
-async function inlineCarouselChildren(
-	graphApiVersion: string,
-	accessToken: string,
-	posts: Record<string, unknown>[],
-): Promise<Record<string, unknown>[]> {
-	let expanded = 0;
-	return Promise.all(
-		posts.map(async (post) => {
-			if (post.media_type !== "CAROUSEL_ALBUM") return post;
-			const id = post.id;
-			if (typeof id !== "string") return post;
-			if (expanded >= MAX_INLINE_CAROUSELS) return post;
-			expanded += 1;
-			const children = await fetchCarouselChildren(
-				graphApiVersion,
-				id,
-				accessToken,
-			);
-			return children.length > 0 ? { ...post, children } : post;
-		}),
-	);
+	const children = normalizeCarouselChildren(post.children);
+	return children.length > 0 ? { ...post, children } : post;
 }
 
 function validateOriginEntry(entry: string): string | null {
@@ -1413,11 +1368,7 @@ export default {
 				postsFromResult(mediaResult),
 				postsFromResult(collaborativeResult),
 			);
-			const augmentedPosts = await inlineCarouselChildren(
-				graphApiVersion,
-				route.credentials.accessToken,
-				mergedPosts,
-			);
+			const augmentedPosts = mergedPosts.map(applyInlineChildren);
 			const nextPagination: CompositeCursor = {
 				version: 3,
 				media: stateFromResult(pagination.media, mediaResult),
