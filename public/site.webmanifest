@@ -8,7 +8,7 @@
   "theme_color": "#07111a",
   "icons": [
     {
-      "src": "/brand-mark-vector.svg",
+      "src": "/brand-mark-traced.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

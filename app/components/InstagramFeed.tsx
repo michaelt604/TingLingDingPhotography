@@ -1173,7 +1173,7 @@ function FeedHeader({ handle, profileUrl, side }: FeedHeaderProps) {
 		<header className={styles.head}>
 			<div className={styles.titleBlock}>
 				<Image
-					src="/brand-mark-vector.svg"
+					src="/brand-mark-traced.svg"
 					alt=""
 					width={48}
 					height={48}
