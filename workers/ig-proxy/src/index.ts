@@ -355,7 +355,10 @@ export function resolveGraphApiVersion(env: Env): string | null {
 // Returns null when the value is empty, too long, or malformed.
 const MAX_CURSOR_LENGTH = 256;
 const MAX_CLIENT_CURSOR_LENGTH = 1024;
-const CACHE_SCHEMA_VERSION = "facebook-two-token-v1";
+// Bump when the cached response shape changes (e.g. the inline
+// `children` expansion), so stale entries from previous schemas are
+// never served.
+const CACHE_SCHEMA_VERSION = "facebook-two-token-v2-inline-children";
 
 interface SourceCursorState {
 	after: string | null;
