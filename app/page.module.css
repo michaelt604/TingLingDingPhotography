@@ -3,69 +3,60 @@
   position: relative;
   isolation: isolate;
   overflow: hidden;
+  background: #07111a;
 }
 
-/* Film grain over the whole hub. Sits a hair above the half content on
-   purpose (real grain overlays the image) but must never steal pointer,
-   so pointer-events: none; links and hints stay clickable. */
-.hub::after {
-  content: "";
+.siteHeader {
   position: absolute;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  opacity: 0.045;
-  mix-blend-mode: soft-light;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E");
-  background-size: 220px 220px;
+  top: clamp(24px, 4vw, 44px);
+  left: clamp(24px, 4vw, 52px);
+  z-index: 4;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.9);
 }
 
-/* Split container */
+.siteName,
+.siteType {
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.siteName { color: #fff; }
+.siteType { color: rgba(255, 255, 255, 0.52); }
+
 .split {
-	position: relative;
-	display: grid;
+  position: relative;
+  display: grid;
   grid-template-columns: 1fr;
   grid-template-rows: 1fr 1fr;
   width: 100%;
-	min-height: 100dvh;
+  min-height: 100dvh;
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.14);
 }
 
-/* A quiet version of the icon's vertical flow: a teal sea meeting lavender hair. */
+/* A quiet seam keeps the two collections distinct without becoming a focal point. */
 .split::before {
-	content: "";
-	position: absolute;
-	left: 50%;
-	top: 12%;
-	bottom: 12%;
-	z-index: 3;
-	width: 1px;
-	background: linear-gradient(
-		to bottom,
-		transparent,
-		color-mix(in srgb, #3eb8af 60%, transparent) 22%,
-		#d0a8ee 50%,
-		color-mix(in srgb, #3eb8af 60%, transparent) 78%,
-		transparent
-	);
-	box-shadow: 0 0 18px color-mix(in srgb, #d0a8ee 42%, transparent);
-	pointer-events: none;
-}
-
-/* The divider "lens flare" breathes, a soft shimmer between the two halves'
-   accents. Static under prefers-reduced-motion (enabled in the block below). */
-@keyframes dividerBreathe {
-	0%, 100% {
-		opacity: 0.7;
-		box-shadow:
-			0 0 10px color-mix(in srgb, #3eb8af 34%, transparent),
-			0 0 26px color-mix(in srgb, #d0a8ee 24%, transparent);
-	}
-	50% {
-		opacity: 1;
-		box-shadow:
-			0 0 16px color-mix(in srgb, #d0a8ee 40%, transparent),
-			0 0 40px color-mix(in srgb, #3eb8af 36%, transparent);
-	}
+  content: "";
+  position: absolute;
+  inset: 10% auto 10% 50%;
+  z-index: 3;
+  width: 1px;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in srgb, #3eb8af 58%, transparent) 25%,
+    color-mix(in srgb, #d0a8ee 76%, transparent) 50%,
+    color-mix(in srgb, #3eb8af 58%, transparent) 75%,
+    transparent
+  );
+  opacity: 0.72;
+  pointer-events: none;
 }
 
 @media (min-width: 860px) {
@@ -76,207 +67,172 @@
 }
 
 @media (max-width: 859px) {
-	.split::before {
-		left: 12%;
-		right: 12%;
-		top: 50%;
-		bottom: auto;
-		width: auto;
-		height: 1px;
-		background: linear-gradient(
-			to right,
-			transparent,
-			color-mix(in srgb, #3eb8af 60%, transparent) 22%,
-			#d0a8ee 50%,
-			color-mix(in srgb, #3eb8af 60%, transparent) 78%,
-			transparent
-		);
-	}
+  .split::before {
+    inset: 50% 10% auto;
+    width: auto;
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      transparent,
+      color-mix(in srgb, #3eb8af 58%, transparent) 25%,
+      color-mix(in srgb, #d0a8ee 76%, transparent) 50%,
+      color-mix(in srgb, #3eb8af 58%, transparent) 75%,
+      transparent
+    );
+  }
 }
 
-/* Each half — a div so the IG handle can be a sibling <a>, not a descendant. */
 .half {
   position: relative;
   display: grid;
   place-items: center;
+  min-height: 50dvh;
   overflow: hidden;
   isolation: isolate;
-  min-height: 50dvh;
-  cursor: pointer;
-  transition: transform 700ms cubic-bezier(0.2, 0.7, 0.2, 1), filter 500ms ease;
-  will-change: transform;
 }
+
 @media (min-width: 860px) {
   .half { min-height: 100dvh; }
 }
 
-/* The "enter this side" link — absolute, covers the whole half, sits
-   below the IG hint so the hint captures its own clicks. */
+/* A small inset frame gives the panels a gallery-like edge and remains quiet on mobile. */
+.half::before {
+  content: "";
+  position: absolute;
+  inset: clamp(18px, 3vw, 38px);
+  z-index: 1;
+  border: 1px solid color-mix(in srgb, var(--half-accent) 24%, transparent);
+  pointer-events: none;
+}
+
 .halfMainLink {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 2;
 }
 
-/* Hover: clicked half slightly scales, other dims */
-@media (hover: hover) {
-  .half:hover { transform: scale(1.015); }
-  .split:hover .half:not(:hover) {
-    filter: brightness(0.6) saturate(0.85);
-    transform: scale(0.985);
-  }
-}
-
-/* Each half paints, bottom→top: the per-half base gradient + edge vignette
-   (one background stack), the drifting aurora blobs (::before), then the
-   cursor spotlight (::after) above them. --mx/--my default to center before
-   any pointer event. Tuning tokens (--spotCore, --vignette, --halfBase,
-   blob colors) are set per half further down. */
 .halfBg {
   position: absolute;
   inset: 0;
   z-index: -1;
-  background:
-    radial-gradient(ellipse 85% 85% at 50% 50%, transparent 0%, var(--vignette, rgba(3, 10, 18, 0.35)) 100%),
-    var(--halfBase, #06151c);
-  transition: transform 1200ms cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-.half:hover .halfBg { transform: scale(1.04); }
-
-/* Underwater — teal/blue */
-.halfUnderwater .halfBg {
-  --spotCore:   color-mix(in srgb, #79e8e0 26%, transparent);
-  --spotFringe: color-mix(in srgb, #3eb8af 12%, transparent);
-  --vignette:  rgba(3, 10, 18, 0.3);
-  --blobHigh:  color-mix(in srgb, #79e8e0 20%, transparent);
-  --blobMid:   color-mix(in srgb, #1a8a8a 32%, transparent);
-  --blobLow:   color-mix(in srgb, #2a5a7a 42%, transparent);
-  --halfBase:
-    radial-gradient(ellipse 80% 60% at 30% 30%, #1a8a8a 0%, transparent 60%),
-    radial-gradient(ellipse 70% 80% at 80% 80%, #2a5a7a 0%, transparent 60%),
-    radial-gradient(ellipse 90% 60% at 50% 50%, #0c2733 0%, var(--accent-ink) 80%);
+  background: linear-gradient(140deg, var(--half-light) 0%, var(--half-mid) 48%, var(--half-deep) 100%);
 }
 
-/* Portrait half — purple gradient */
-.halfPortrait .halfBg {
-  --spotCore:   color-mix(in srgb, #d0a8ee 28%, transparent);
-  --spotFringe: color-mix(in srgb, #a478d0 14%, transparent);
-  --vignette:  rgba(5, 2, 10, 0.34);
-  --blobHigh:  color-mix(in srgb, #d0a8ee 22%, transparent);
-  --blobMid:   color-mix(in srgb, #8a4abc 34%, transparent);
-  --blobLow:   color-mix(in srgb, #2a1850 45%, transparent);
-  --halfBase:
-    radial-gradient(ellipse 70% 60% at 70% 30%, #6a3a9c 0%, transparent 60%),
-    radial-gradient(ellipse 60% 80% at 20% 80%, #8a4abc 0%, transparent 60%),
-    radial-gradient(ellipse 90% 70% at 50% 50%, #2a1850 0%, #14082a 80%);
+/* One broad, slow light pass creates atmosphere without following the pointer. */
+.halfBg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    112deg,
+    transparent 18%,
+    color-mix(in srgb, var(--half-accent) 12%, transparent) 46%,
+    transparent 72%
+  );
+  opacity: 0.7;
+  transform: translateX(-18%);
+  pointer-events: none;
 }
 
-/* Aurora — a slowly drifting multi-blob gradient. The blobby layers live on
-   ::before (not background-position) so the spotlight can own the top layer.
-   Inset negative so the drift never reveals the half's edges; z 0 puts them
-   above the base stack but below the spotlight (z 1) and content/links
-   (z 1 in the half), so titles and the covering link stay clickable. */
-.halfBg::before,
 .halfBg::after {
   content: "";
   position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(2, 7, 12, 0.08), rgba(2, 7, 12, 0.3));
   pointer-events: none;
 }
-.halfBg::before {
-  inset: -18%;
-  z-index: 0;
-  background:
-    radial-gradient(ellipse 55% 45% at 30% 32%, var(--blobHigh) 0%, transparent 62%),
-    radial-gradient(ellipse 60% 50% at 70% 70%, var(--blobLow) 0%, transparent 60%),
-    radial-gradient(ellipse 60% 55% at 65% 25%, var(--blobMid) 0%, transparent 62%),
-    radial-gradient(ellipse 45% 55% at 25% 80%, var(--blobHigh) 0%, transparent 60%);
-}
-/* Cursor spotlight — a soft pool of light above the aurora and below
-   content/links (z-index 1 in the half). Kept subtle so titles stay crisp;
-   dial up via --spotCore/--spotFringe if it should read stronger. */
-.halfBg::after {
-  inset: 0;
-  z-index: 1;
-  background:
-    radial-gradient(
-      ellipse 95% 85% at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
-      var(--spotCore, rgba(255, 255, 255, 0.0001)) 0%,
-      var(--spotFringe, transparent) 38%,
-      transparent 62%
-    );
+
+.halfUnderwater {
+  --half-accent: #79e8e0;
+  --half-light: #16444b;
+  --half-mid: #0b2933;
+  --half-deep: #06171f;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .halfBg::before {
-    animation: auroraDriftA 48s ease-in-out infinite alternate;
-  }
-  /* Negative delay de-phases the two halves so they never pulse in sync. */
-  .halfPortrait .halfBg::before { animation-delay: -22s; }
-
-  /* Divider breathing glow. */
-  .split::before { animation: dividerBreathe 11s ease-in-out infinite; }
-
-  /* Grain shimmer: fine stepped jumps read as shifting film grain. */
-  .hub::after { animation: grainShift 1100ms steps(3, jump-none) infinite; }
+.halfPortrait {
+  --half-accent: #d0a8ee;
+  --half-light: #493566;
+  --half-mid: #28183f;
+  --half-deep: #130a25;
 }
 
-@keyframes auroraDriftA {
-  from { transform: translate3d(-2%, -1.5%, 0) scale(1); }
-  to   { transform: translate3d(3%, 3.5%, 0) scale(1.04); }
-}
-@keyframes grainShift {
-  0%   { background-position: 0 0; }
-  33%  { background-position: -30px 18px; }
-  66%  { background-position: 22px -28px; }
-  100% { background-position: 0 0; }
-}
-
-/* Content */
 .halfContent {
   position: relative;
-  z-index: 1;
-  max-width: 600px;
-  padding: 80px 32px;
-  text-align: left;
-  transition: transform 800ms cubic-bezier(0.2, 0.7, 0.2, 1);
-  /* The .halfMainLink covers the whole half and is what navigates.
-     Without pointer-events: none, the h1 (same z-index, later in DOM)
-     would catch the click and not navigate. */
+  z-index: 3;
+  width: min(100%, 620px);
+  padding: 96px clamp(32px, 7vw, 92px) 72px;
   pointer-events: none;
 }
-@media (min-width: 860px) {
-  .halfContent { padding: 0 56px; }
+
+.halfKicker {
+  margin-bottom: clamp(24px, 3vw, 42px);
+  color: color-mix(in srgb, var(--half-accent) 86%, white 14%);
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  line-height: 1.4;
+  text-transform: uppercase;
 }
-.half:hover .halfContent { transform: translateY(-4px); }
 
 .halfTitle {
-  font-family: var(--ff-display);
-  font-size: clamp(48px, 8vw, 104px);
-  line-height: 0.95;
-  letter-spacing: -0.015em;
+  max-width: 9ch;
   color: #fff;
-  margin: 0;
-  text-wrap: balance;
+  font-size: clamp(48px, 7.5vw, 104px);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
+}
+
+.halfCta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: clamp(28px, 4vw, 48px);
+  padding-bottom: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--half-accent) 68%, transparent);
+  color: rgba(255, 255, 255, 0.78);
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.halfArrow {
+  color: var(--half-accent);
+  font-size: 16px;
+  line-height: 0.7;
 }
 
 .halfHint {
   position: absolute;
-  bottom: 22px;
-  left: 50%;
-  transform: translateX(-50%);
+  right: clamp(32px, 5vw, 68px);
+  bottom: clamp(28px, 4vw, 46px);
+  z-index: 4;
+  color: rgba(255, 255, 255, 0.58);
   font-family: var(--ff-mono);
   font-size: 10px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.78);
-  text-decoration: none;
-  z-index: 2;
-  white-space: nowrap;
-  transition: color 200ms, letter-spacing 200ms;
+  transition: color 220ms ease;
 }
-.halfHint:hover { color: #fff; letter-spacing: 0.22em; }
-.halfPortrait .halfHint { color: rgba(255, 255, 255, 0.82); }
+
+.halfHint:hover { color: #fff; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .halfBg::before {
+    animation: ambientLight 24s ease-in-out infinite alternate;
+  }
+
+  .halfPortrait .halfBg::before { animation-delay: -11s; }
+}
+
+@keyframes ambientLight {
+  from { transform: translateX(-18%); }
+  to { transform: translateX(18%); }
+}
 
 @media (max-width: 859px) {
+  .siteHeader { top: 24px; }
+  .halfContent { padding: 76px 32px 68px; }
+  .halfKicker { margin-bottom: 24px; }
   .halfHint { display: none; }
 }
