@@ -14,7 +14,7 @@
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  opacity: 0.06;
+  opacity: 0.045;
   mix-blend-mode: soft-light;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E");
   background-size: 220px 220px;
@@ -55,16 +55,16 @@
    accents. Static under prefers-reduced-motion (enabled in the block below). */
 @keyframes dividerBreathe {
 	0%, 100% {
-		opacity: 0.55;
+		opacity: 0.7;
 		box-shadow:
-			0 0 12px color-mix(in srgb, #3eb8af 40%, transparent),
-			0 0 32px color-mix(in srgb, #d0a8ee 30%, transparent);
+			0 0 10px color-mix(in srgb, #3eb8af 34%, transparent),
+			0 0 26px color-mix(in srgb, #d0a8ee 24%, transparent);
 	}
 	50% {
 		opacity: 1;
 		box-shadow:
-			0 0 22px color-mix(in srgb, #d0a8ee 55%, transparent),
-			0 0 56px color-mix(in srgb, #3eb8af 45%, transparent);
+			0 0 16px color-mix(in srgb, #d0a8ee 40%, transparent),
+			0 0 40px color-mix(in srgb, #3eb8af 36%, transparent);
 	}
 }
 
@@ -143,62 +143,14 @@
 }
 .half:hover .halfBg { transform: scale(1.04); }
 
-/* Living half layers — floating motes (::before) and soft diagonal light
-   rays (::after) over the whole half. z 0 keeps them above the bg but below
-   content/links, so titles and the covering link stay crisp and clickable. */
-.half::before,
-.half::after {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  pointer-events: none;
-}
-
-/* Motes: a quiet tile of tiny drifting specks that slowly wander, so the
-   gradient reads as alive even where the cursor isn't. background-position
-   is animated (alternate) under no-preference below. */
-.half::before {
-  inset: 0;
-  background-image:
-    radial-gradient(2.4px 2.4px at 8% 16%,  var(--moteHi, rgba(255, 255, 255, 0.2)) 0%, transparent 100%),
-    radial-gradient(2.4px 2.4px at 16% 64%, var(--moteLo, rgba(255, 255, 255, 0.15)) 0%, transparent 100%),
-    radial-gradient(2.4px 2.4px at 28% 34%, var(--moteHi, rgba(255, 255, 255, 0.2)) 0%, transparent 100%),
-    radial-gradient(2.4px 2.4px at 40% 78%, var(--moteLo, rgba(255, 255, 255, 0.15)) 0%, transparent 100%),
-    radial-gradient(2.4px 2.4px at 52% 14%, var(--moteHi, rgba(255, 255, 255, 0.2)) 0%, transparent 100%),
-    radial-gradient(2.4px 2.4px at 62% 52%, var(--moteLo, rgba(255, 255, 255, 0.15)) 0%, transparent 100%),
-    radial-gradient(2.4px 2.4px at 74% 26%, var(--moteHi, rgba(255, 255, 255, 0.2)) 0%, transparent 100%),
-    radial-gradient(2.4px 2.4px at 84% 68%, var(--moteLo, rgba(255, 255, 255, 0.15)) 0%, transparent 100%),
-    radial-gradient(2.4px 2.4px at 92% 40%, var(--moteHi, rgba(255, 255, 255, 0.2)) 0%, transparent 100%);
-  background-repeat: repeat;
-  background-size: 480px 480px;
-  background-position: 0 0;
-}
-
-/* Rays: a few long diagonal washes, screen-blended so they read as light,
-   gently swaying (rotate/translate) under no-preference below. */
-.half::after {
-  inset: -10% -15% -10%;
-  mix-blend-mode: screen;
-  background: linear-gradient(
-    115deg,
-    var(--raysB, transparent) 0%,
-    transparent 14%,
-    var(--raysA, transparent) 28%,
-    transparent 46%,
-    var(--raysB, transparent) 64%,
-    transparent 82%,
-    var(--raysA, transparent) 100%
-  );
-}
-
 /* Underwater — teal/blue */
 .halfUnderwater .halfBg {
-  --spotCore:   color-mix(in srgb, #79e8e0 30%, transparent);
-  --spotFringe: color-mix(in srgb, #3eb8af 14%, transparent);
-  --vignette:  rgba(3, 10, 18, 0.38);
-  --blobHigh:  color-mix(in srgb, #79e8e0 24%, transparent);
-  --blobMid:   color-mix(in srgb, #1a8a8a 46%, transparent);
-  --blobLow:   color-mix(in srgb, #2a5a7a 60%, transparent);
+  --spotCore:   color-mix(in srgb, #79e8e0 26%, transparent);
+  --spotFringe: color-mix(in srgb, #3eb8af 12%, transparent);
+  --vignette:  rgba(3, 10, 18, 0.3);
+  --blobHigh:  color-mix(in srgb, #79e8e0 20%, transparent);
+  --blobMid:   color-mix(in srgb, #1a8a8a 32%, transparent);
+  --blobLow:   color-mix(in srgb, #2a5a7a 42%, transparent);
   --halfBase:
     radial-gradient(ellipse 80% 60% at 30% 30%, #1a8a8a 0%, transparent 60%),
     radial-gradient(ellipse 70% 80% at 80% 80%, #2a5a7a 0%, transparent 60%),
@@ -207,31 +159,16 @@
 
 /* Portrait half — purple gradient */
 .halfPortrait .halfBg {
-  --spotCore:   color-mix(in srgb, #d0a8ee 34%, transparent);
-  --spotFringe: color-mix(in srgb, #a478d0 16%, transparent);
-  --vignette:  rgba(5, 2, 10, 0.42);
-  --blobHigh:  color-mix(in srgb, #d0a8ee 26%, transparent);
-  --blobMid:   color-mix(in srgb, #8a4abc 50%, transparent);
-  --blobLow:   color-mix(in srgb, #2a1850 70%, transparent);
+  --spotCore:   color-mix(in srgb, #d0a8ee 28%, transparent);
+  --spotFringe: color-mix(in srgb, #a478d0 14%, transparent);
+  --vignette:  rgba(5, 2, 10, 0.34);
+  --blobHigh:  color-mix(in srgb, #d0a8ee 22%, transparent);
+  --blobMid:   color-mix(in srgb, #8a4abc 34%, transparent);
+  --blobLow:   color-mix(in srgb, #2a1850 45%, transparent);
   --halfBase:
     radial-gradient(ellipse 70% 60% at 70% 30%, #6a3a9c 0%, transparent 60%),
     radial-gradient(ellipse 60% 80% at 20% 80%, #8a4abc 0%, transparent 60%),
     radial-gradient(ellipse 90% 70% at 50% 50%, #2a1850 0%, #14082a 80%);
-}
-
-.halfUnderwater {
-  --moteHi: rgba(180, 240, 234, 0.5);
-  --moteLo: rgba(121, 232, 224, 0.28);
-  --raysA:  rgba(230, 250, 246, 0.1);
-  --raysB:  rgba(121, 232, 224, 0.07);
-}
-
-/* Portrait — purple */
-.halfPortrait {
-  --moteHi: rgba(236, 214, 255, 0.5);
-  --moteLo: rgba(208, 168, 238, 0.3);
-  --raysA:  rgba(245, 232, 255, 0.1);
-  --raysB:  rgba(208, 168, 238, 0.07);
 }
 
 /* Aurora — a slowly drifting multi-blob gradient. The blobby layers live on
@@ -271,35 +208,21 @@
 
 @media (prefers-reduced-motion: no-preference) {
   .halfBg::before {
-    animation: auroraDriftA 32s ease-in-out infinite alternate;
+    animation: auroraDriftA 48s ease-in-out infinite alternate;
   }
-  /* Negative delays de-phase the two halves so they never pulse in sync. */
-  .halfPortrait .halfBg::before { animation-delay: -15s; }
-
-  /* Motes wander and rays sway — the "living" background. */
-  .half::before { animation: motesDrift 26s ease-in-out infinite alternate; }
-  .halfPortrait::before { animation-delay: -13s; }
-  .half::after { animation: raysSway 16s ease-in-out infinite alternate; }
-  .halfPortrait::after { animation-delay: -8s; }
+  /* Negative delay de-phases the two halves so they never pulse in sync. */
+  .halfPortrait .halfBg::before { animation-delay: -22s; }
 
   /* Divider breathing glow. */
-  .split::before { animation: dividerBreathe 8s ease-in-out infinite; }
+  .split::before { animation: dividerBreathe 11s ease-in-out infinite; }
 
   /* Grain shimmer: fine stepped jumps read as shifting film grain. */
-  .hub::after { animation: grainShift 900ms steps(3, jump-none) infinite; }
+  .hub::after { animation: grainShift 1100ms steps(3, jump-none) infinite; }
 }
 
 @keyframes auroraDriftA {
-  from { transform: translate3d(-3%, -2%, 0) scale(1); }
-  to   { transform: translate3d(4%, 5%, 0) scale(1.06); }
-}
-@keyframes motesDrift {
-  from { background-position: 0 0; }
-  to   { background-position: 44px 64px; }
-}
-@keyframes raysSway {
-  from { transform: rotate(-1.5deg) translateX(-1.5%); }
-  to   { transform: rotate(1.5deg) translateX(1.5%); }
+  from { transform: translate3d(-2%, -1.5%, 0) scale(1); }
+  to   { transform: translate3d(3%, 3.5%, 0) scale(1.04); }
 }
 @keyframes grainShift {
   0%   { background-position: 0 0; }
