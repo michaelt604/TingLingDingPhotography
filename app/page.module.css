@@ -127,22 +127,16 @@
   }
 }
 
-/* Each half paints, bottom→top: the per-half base gradient, the edge
-   vignette, then the cursor spotlight (--mx/--my default to center before
-   any pointer event) — all one background stack. The drifting aurora blobs
-   on ::before/::after lay above that stack. Tuning tokens (--spotCore,
-   --vignette, --halfBase, blob colors) are set per half further down. */
+/* Each half paints, bottom→top: the per-half base gradient + edge vignette
+   (one background stack), the drifting aurora blobs (::before), then the
+   cursor spotlight (::after) above them. --mx/--my default to center before
+   any pointer event. Tuning tokens (--spotCore, --vignette, --halfBase,
+   blob colors) are set per half further down. */
 .halfBg {
   position: absolute;
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(
-      ellipse 110% 110% at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
-      var(--spotCore, transparent) 0%,
-      var(--spotFringe, transparent) 42%,
-      transparent 74%
-    ),
     radial-gradient(ellipse 85% 85% at 50% 50%, transparent 0%, var(--vignette, rgba(3, 10, 18, 0.35)) 100%),
     var(--halfBase, #06151c);
   transition: transform 1200ms cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -151,8 +145,8 @@
 
 /* Underwater half — teal/blue */
 .halfUnderwater .halfBg {
-  --spotCore:   color-mix(in srgb, #3eb8af 30%, transparent);
-  --spotFringe: color-mix(in srgb, #79e8e0 10%, transparent);
+  --spotCore:   color-mix(in srgb, #79e8e0 48%, transparent);
+  --spotFringe: color-mix(in srgb, #3eb8af 26%, transparent);
   --vignette:  rgba(3, 10, 18, 0.38);
   --blobHigh:  color-mix(in srgb, #79e8e0 24%, transparent);
   --blobMid:   color-mix(in srgb, #1a8a8a 46%, transparent);
@@ -165,8 +159,8 @@
 
 /* Portrait half — purple gradient */
 .halfPortrait .halfBg {
-  --spotCore:   color-mix(in srgb, #d0a8ee 20%, transparent);
-  --spotFringe: color-mix(in srgb, #a478d0 10%, transparent);
+  --spotCore:   color-mix(in srgb, #d0a8ee 52%, transparent);
+  --spotFringe: color-mix(in srgb, #a478d0 28%, transparent);
   --vignette:  rgba(5, 2, 10, 0.42);
   --blobHigh:  color-mix(in srgb, #d0a8ee 26%, transparent);
   --blobMid:   color-mix(in srgb, #8a4abc 50%, transparent);
@@ -178,39 +172,45 @@
 }
 
 /* Aurora — a slowly drifting multi-blob gradient. The blobby layers live on
-   ::before/::after (not background-position) so the spotlight can own the
-   base stack. Inset negative so the drift never reveals the half's edges;
-   z 0 puts them above the whole background stack but below content/links
-   (z 1), so titles and the covering link stay on top and clickable. */
+   ::before (not background-position) so the spotlight can own the top layer.
+   Inset negative so the drift never reveals the half's edges; z 0 puts them
+   above the base stack but below the spotlight (z 1) and content/links
+   (z 1 in the half), so titles and the covering link stay clickable. */
 .halfBg::before,
 .halfBg::after {
   content: "";
   position: absolute;
-  inset: -18%;
-  z-index: 0;
   pointer-events: none;
 }
 .halfBg::before {
+  inset: -18%;
+  z-index: 0;
   background:
     radial-gradient(ellipse 55% 45% at 30% 32%, var(--blobHigh) 0%, transparent 62%),
-    radial-gradient(ellipse 60% 50% at 70% 70%, var(--blobLow) 0%, transparent 60%);
-}
-.halfBg::after {
-  background:
+    radial-gradient(ellipse 60% 50% at 70% 70%, var(--blobLow) 0%, transparent 60%),
     radial-gradient(ellipse 60% 55% at 65% 25%, var(--blobMid) 0%, transparent 62%),
     radial-gradient(ellipse 45% 55% at 25% 80%, var(--blobHigh) 0%, transparent 60%);
+}
+/* Cursor spotlight — the half's top paint layer, above the aurora so the
+   drift never dims it, below content/links (z-index 1 in the half). */
+.halfBg::after {
+  inset: 0;
+  z-index: 1;
+  background:
+    radial-gradient(
+      ellipse 120% 110% at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
+      var(--spotCore, rgba(255, 255, 255, 0.0001)) 0%,
+      var(--spotFringe, transparent) 36%,
+      transparent 64%
+    );
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .halfBg::before {
     animation: auroraDriftA 32s ease-in-out infinite alternate;
   }
-  .halfBg::after {
-    animation: auroraDriftB 21s ease-in-out infinite alternate;
-  }
   /* Negative delays de-phase the two halves so they never pulse in sync. */
-  .halfPortrait .halfBg::before { animation-delay: -11s; }
-  .halfPortrait .halfBg::after { animation-delay: -7s; }
+  .halfPortrait .halfBg::before { animation-delay: -15s; }
 
   /* Divider breathing glow. */
   .split::before { animation: dividerBreathe 8s ease-in-out infinite; }
@@ -222,10 +222,6 @@
 @keyframes auroraDriftA {
   from { transform: translate3d(-3%, -2%, 0) scale(1); }
   to   { transform: translate3d(4%, 5%, 0) scale(1.06); }
-}
-@keyframes auroraDriftB {
-  from { transform: translate3d(3%, 4%, 0) scale(1.03); }
-  to   { transform: translate3d(-5%, -3%, 0) scale(0.98); }
 }
 @keyframes grainShift {
   0%   { background-position: 0 0; }
