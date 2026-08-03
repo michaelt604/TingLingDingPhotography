@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import styles from './page.module.css';
+import { CONTACT_EMAIL } from './components/contactMailto';
 
 export default function HubPage() {
   return (
@@ -10,6 +11,14 @@ export default function HubPage() {
         <span className={styles.siteName}>TingLingDing</span>
         <span className={styles.siteType}>Photography</span>
       </div>
+
+      <a
+        className={styles.homeContact}
+        href={`mailto:${CONTACT_EMAIL}`}
+        aria-label="Email TingLingDing Photography"
+      >
+        Get in touch
+      </a>
 
       <div className={styles.split}>
         <section

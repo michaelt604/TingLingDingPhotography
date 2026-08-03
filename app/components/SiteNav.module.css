@@ -6,7 +6,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 18px clamp(20px, 4vw, 48px);
+  padding-block: max(18px, calc(env(safe-area-inset-top, 0px) + 10px)) 18px;
+  padding-inline: max(clamp(20px, 4vw, 48px), calc(env(safe-area-inset-left, 0px) + 12px)) max(clamp(20px, 4vw, 48px), calc(env(safe-area-inset-right, 0px) + 12px));
   backdrop-filter: blur(14px) saturate(1.4);
   -webkit-backdrop-filter: blur(14px) saturate(1.4);
   border-bottom: 1px solid var(--line);
@@ -90,8 +91,7 @@
 
 @media (max-width: 480px) {
   .brandText { display: none; }
-  .link span { display: none; }
   .cta span { display: none; }
-  .link { padding: 8px 10px; }
+  .link { padding: 8px 10px; font-size: 10px; }
   .cta { padding: 8px 10px; }
 }

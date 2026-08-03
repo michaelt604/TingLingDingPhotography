@@ -8,8 +8,8 @@
 
 .siteHeader {
   position: absolute;
-  top: clamp(24px, 4vw, 44px);
-  left: clamp(24px, 4vw, 52px);
+  top: max(clamp(24px, 4vw, 44px), calc(env(safe-area-inset-top, 0px) + 16px));
+  left: max(clamp(24px, 4vw, 52px), calc(env(safe-area-inset-left, 0px) + 16px));
   z-index: 4;
   display: flex;
   align-items: baseline;
@@ -28,6 +28,33 @@
 
 .siteName { color: #fff; }
 .siteType { color: rgba(255, 255, 255, 0.52); }
+
+.homeContact {
+  position: absolute;
+  top: max(clamp(24px, 4vw, 44px), calc(env(safe-area-inset-top, 0px) + 16px));
+  right: max(clamp(24px, 4vw, 52px), calc(env(safe-area-inset-right, 0px) + 16px));
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.74);
+  font-family: var(--ff-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  line-height: 1;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition: color 200ms ease, border-color 200ms ease, background 200ms ease;
+}
+
+.homeContact:hover,
+.homeContact:focus-visible {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.06);
+}
 
 .split {
   position: relative;
@@ -368,7 +395,17 @@
 }
 
 @media (max-width: 859px) {
-  .siteHeader { top: 24px; }
+  .siteHeader,
+  .homeContact {
+    top: max(24px, calc(env(safe-area-inset-top, 0px) + 16px));
+  }
+
+  .siteHeader { left: max(24px, calc(env(safe-area-inset-left, 0px) + 16px)); }
+  .homeContact {
+    right: max(24px, calc(env(safe-area-inset-right, 0px) + 16px));
+    padding-inline: 10px;
+    font-size: 9px;
+  }
   .halfContent { padding: 76px 32px 68px; }
   .halfKicker { margin-bottom: 24px; }
   .halfHint { display: none; }
