@@ -95,14 +95,30 @@
   .half { min-height: 100dvh; }
 }
 
-/* A small inset frame gives the panels a gallery-like edge and remains quiet on mobile. */
-.half::before {
+/* Partial corners keep the gallery framing without boxing each collection in. */
+.half::before,
+.half::after {
   content: "";
   position: absolute;
-  inset: clamp(18px, 3vw, 38px);
   z-index: 1;
-  border: 1px solid color-mix(in srgb, var(--half-accent) 24%, transparent);
+  width: clamp(46px, 7vw, 86px);
+  height: clamp(46px, 7vw, 86px);
+  opacity: 0.72;
   pointer-events: none;
+}
+
+.half::before {
+  top: clamp(18px, 3vw, 38px);
+  left: clamp(18px, 3vw, 38px);
+  border-top: 1px solid color-mix(in srgb, var(--half-accent) 32%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--half-accent) 32%, transparent);
+}
+
+.half::after {
+  right: clamp(18px, 3vw, 38px);
+  bottom: clamp(18px, 3vw, 38px);
+  border-right: 1px solid color-mix(in srgb, var(--half-accent) 32%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--half-accent) 32%, transparent);
 }
 
 .halfMainLink {
@@ -115,7 +131,13 @@
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(140deg, var(--half-light) 0%, var(--half-mid) 48%, var(--half-deep) 100%);
+  background:
+    radial-gradient(
+      circle at var(--glow-x) var(--glow-y),
+      color-mix(in srgb, var(--half-accent) 17%, transparent) 0%,
+      transparent 43%
+    ),
+    linear-gradient(140deg, var(--half-light) 0%, var(--half-mid) 48%, var(--half-deep) 100%);
 }
 
 /* One broad, slow light pass creates atmosphere without following the pointer. */
@@ -124,12 +146,12 @@
   position: absolute;
   inset: 0;
   background: linear-gradient(
-    112deg,
+    var(--light-angle),
     transparent 18%,
-    color-mix(in srgb, var(--half-accent) 12%, transparent) 46%,
+    color-mix(in srgb, var(--half-accent) 11%, transparent) 46%,
     transparent 72%
   );
-  opacity: 0.7;
+  opacity: 0.62;
   transform: translateX(-18%);
   pointer-events: none;
 }
@@ -137,8 +159,12 @@
 .halfBg::after {
   content: "";
   position: absolute;
-  inset: 0;
-  background: linear-gradient(180deg, rgba(2, 7, 12, 0.08), rgba(2, 7, 12, 0.3));
+  inset: -4%;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  opacity: 0.64;
+  transform: translate3d(0, 0, 0);
   pointer-events: none;
 }
 
@@ -147,6 +173,15 @@
   --half-light: #16444b;
   --half-mid: #0b2933;
   --half-deep: #06171f;
+  --glow-x: 10%;
+  --glow-y: 88%;
+  --light-angle: 118deg;
+}
+
+.halfUnderwater .halfBg::after {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%2379e8e0' stroke-opacity='.13' stroke-width='2'%3E%3Cpath d='M-60 720 C120 570 250 820 430 670 S700 520 860 650'/%3E%3Cpath d='M-80 790 C140 650 280 900 480 740 S720 610 870 730'/%3E%3Cpath d='M-40 640 C130 500 270 690 430 560 S690 430 840 560'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(180deg, rgba(2, 7, 12, 0.06), rgba(2, 7, 12, 0.3));
 }
 
 .halfPortrait {
@@ -154,6 +189,15 @@
   --half-light: #493566;
   --half-mid: #28183f;
   --half-deep: #130a25;
+  --glow-x: 90%;
+  --glow-y: 12%;
+  --light-angle: 242deg;
+}
+
+.halfPortrait .halfBg::after {
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 1000' preserveAspectRatio='none'%3E%3Cg fill='none' stroke='%23d0a8ee' stroke-opacity='.12' stroke-width='2'%3E%3Cpath d='M720 -80 C540 170 780 320 590 520 S330 760 430 1080'/%3E%3Cpath d='M800 -40 C610 190 820 350 650 560 S420 790 520 1060'/%3E%3Cpath d='M640 -90 C470 150 680 300 500 490 S250 730 330 1060'/%3E%3C/g%3E%3C/svg%3E"),
+    linear-gradient(180deg, rgba(2, 7, 12, 0.06), rgba(2, 7, 12, 0.32));
 }
 
 .halfContent {
@@ -194,12 +238,27 @@
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
+  transition:
+    color 240ms ease,
+    border-color 240ms ease;
 }
 
 .halfArrow {
   color: var(--half-accent);
   font-size: 16px;
   line-height: 0.7;
+  transition: transform 280ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.halfMainLink:hover ~ .halfContent .halfCta,
+.halfMainLink:focus-visible ~ .halfContent .halfCta {
+  color: #fff;
+  border-bottom-color: var(--half-accent);
+}
+
+.halfMainLink:hover ~ .halfContent .halfArrow,
+.halfMainLink:focus-visible ~ .halfContent .halfArrow {
+  transform: translate3d(3px, -2px, 0);
 }
 
 .halfHint {
@@ -223,11 +282,39 @@
   }
 
   .halfPortrait .halfBg::before { animation-delay: -11s; }
+
+  .halfBg::after {
+    animation: organicDrift 34s ease-in-out infinite alternate;
+  }
+
+  .halfPortrait .halfBg::after { animation-delay: -16s; }
+
+  .halfContent {
+    animation: contentEnter 820ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  }
+
+  .halfPortrait .halfContent { animation-delay: 100ms; }
 }
 
 @keyframes ambientLight {
   from { transform: translateX(-18%); }
   to { transform: translateX(18%); }
+}
+
+@keyframes organicDrift {
+  from { transform: translate3d(-1.2%, -0.8%, 0); }
+  to { transform: translate3d(1.2%, 0.8%, 0); }
+}
+
+@keyframes contentEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 859px) {
