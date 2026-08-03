@@ -143,10 +143,58 @@
 }
 .half:hover .halfBg { transform: scale(1.04); }
 
-/* Underwater half — teal/blue */
+/* Living half layers — floating motes (::before) and soft diagonal light
+   rays (::after) over the whole half. z 0 keeps them above the bg but below
+   content/links, so titles and the covering link stay crisp and clickable. */
+.half::before,
+.half::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Motes: a quiet tile of tiny drifting specks that slowly wander, so the
+   gradient reads as alive even where the cursor isn't. background-position
+   is animated (alternate) under no-preference below. */
+.half::before {
+  inset: 0;
+  background-image:
+    radial-gradient(2.4px 2.4px at 8% 16%,  var(--moteHi, rgba(255, 255, 255, 0.2)) 0%, transparent 100%),
+    radial-gradient(2.4px 2.4px at 16% 64%, var(--moteLo, rgba(255, 255, 255, 0.15)) 0%, transparent 100%),
+    radial-gradient(2.4px 2.4px at 28% 34%, var(--moteHi, rgba(255, 255, 255, 0.2)) 0%, transparent 100%),
+    radial-gradient(2.4px 2.4px at 40% 78%, var(--moteLo, rgba(255, 255, 255, 0.15)) 0%, transparent 100%),
+    radial-gradient(2.4px 2.4px at 52% 14%, var(--moteHi, rgba(255, 255, 255, 0.2)) 0%, transparent 100%),
+    radial-gradient(2.4px 2.4px at 62% 52%, var(--moteLo, rgba(255, 255, 255, 0.15)) 0%, transparent 100%),
+    radial-gradient(2.4px 2.4px at 74% 26%, var(--moteHi, rgba(255, 255, 255, 0.2)) 0%, transparent 100%),
+    radial-gradient(2.4px 2.4px at 84% 68%, var(--moteLo, rgba(255, 255, 255, 0.15)) 0%, transparent 100%),
+    radial-gradient(2.4px 2.4px at 92% 40%, var(--moteHi, rgba(255, 255, 255, 0.2)) 0%, transparent 100%);
+  background-repeat: repeat;
+  background-size: 480px 480px;
+  background-position: 0 0;
+}
+
+/* Rays: a few long diagonal washes, screen-blended so they read as light,
+   gently swaying (rotate/translate) under no-preference below. */
+.half::after {
+  inset: -10% -15% -10%;
+  mix-blend-mode: screen;
+  background: linear-gradient(
+    115deg,
+    var(--raysB, transparent) 0%,
+    transparent 14%,
+    var(--raysA, transparent) 28%,
+    transparent 46%,
+    var(--raysB, transparent) 64%,
+    transparent 82%,
+    var(--raysA, transparent) 100%
+  );
+}
+
+/* Underwater — teal/blue */
 .halfUnderwater .halfBg {
-  --spotCore:   color-mix(in srgb, #79e8e0 48%, transparent);
-  --spotFringe: color-mix(in srgb, #3eb8af 26%, transparent);
+  --spotCore:   color-mix(in srgb, #79e8e0 30%, transparent);
+  --spotFringe: color-mix(in srgb, #3eb8af 14%, transparent);
   --vignette:  rgba(3, 10, 18, 0.38);
   --blobHigh:  color-mix(in srgb, #79e8e0 24%, transparent);
   --blobMid:   color-mix(in srgb, #1a8a8a 46%, transparent);
@@ -159,8 +207,8 @@
 
 /* Portrait half — purple gradient */
 .halfPortrait .halfBg {
-  --spotCore:   color-mix(in srgb, #d0a8ee 52%, transparent);
-  --spotFringe: color-mix(in srgb, #a478d0 28%, transparent);
+  --spotCore:   color-mix(in srgb, #d0a8ee 34%, transparent);
+  --spotFringe: color-mix(in srgb, #a478d0 16%, transparent);
   --vignette:  rgba(5, 2, 10, 0.42);
   --blobHigh:  color-mix(in srgb, #d0a8ee 26%, transparent);
   --blobMid:   color-mix(in srgb, #8a4abc 50%, transparent);
@@ -169,6 +217,21 @@
     radial-gradient(ellipse 70% 60% at 70% 30%, #6a3a9c 0%, transparent 60%),
     radial-gradient(ellipse 60% 80% at 20% 80%, #8a4abc 0%, transparent 60%),
     radial-gradient(ellipse 90% 70% at 50% 50%, #2a1850 0%, #14082a 80%);
+}
+
+.halfUnderwater {
+  --moteHi: rgba(180, 240, 234, 0.5);
+  --moteLo: rgba(121, 232, 224, 0.28);
+  --raysA:  rgba(230, 250, 246, 0.1);
+  --raysB:  rgba(121, 232, 224, 0.07);
+}
+
+/* Portrait — purple */
+.halfPortrait {
+  --moteHi: rgba(236, 214, 255, 0.5);
+  --moteLo: rgba(208, 168, 238, 0.3);
+  --raysA:  rgba(245, 232, 255, 0.1);
+  --raysB:  rgba(208, 168, 238, 0.07);
 }
 
 /* Aurora — a slowly drifting multi-blob gradient. The blobby layers live on
@@ -191,17 +254,18 @@
     radial-gradient(ellipse 60% 55% at 65% 25%, var(--blobMid) 0%, transparent 62%),
     radial-gradient(ellipse 45% 55% at 25% 80%, var(--blobHigh) 0%, transparent 60%);
 }
-/* Cursor spotlight — the half's top paint layer, above the aurora so the
-   drift never dims it, below content/links (z-index 1 in the half). */
+/* Cursor spotlight — a soft pool of light above the aurora and below
+   content/links (z-index 1 in the half). Kept subtle so titles stay crisp;
+   dial up via --spotCore/--spotFringe if it should read stronger. */
 .halfBg::after {
   inset: 0;
   z-index: 1;
   background:
     radial-gradient(
-      ellipse 120% 110% at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
+      ellipse 95% 85% at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
       var(--spotCore, rgba(255, 255, 255, 0.0001)) 0%,
-      var(--spotFringe, transparent) 36%,
-      transparent 64%
+      var(--spotFringe, transparent) 38%,
+      transparent 62%
     );
 }
 
@@ -211,6 +275,12 @@
   }
   /* Negative delays de-phase the two halves so they never pulse in sync. */
   .halfPortrait .halfBg::before { animation-delay: -15s; }
+
+  /* Motes wander and rays sway — the "living" background. */
+  .half::before { animation: motesDrift 26s ease-in-out infinite alternate; }
+  .halfPortrait::before { animation-delay: -13s; }
+  .half::after { animation: raysSway 16s ease-in-out infinite alternate; }
+  .halfPortrait::after { animation-delay: -8s; }
 
   /* Divider breathing glow. */
   .split::before { animation: dividerBreathe 8s ease-in-out infinite; }
@@ -222,6 +292,14 @@
 @keyframes auroraDriftA {
   from { transform: translate3d(-3%, -2%, 0) scale(1); }
   to   { transform: translate3d(4%, 5%, 0) scale(1.06); }
+}
+@keyframes motesDrift {
+  from { background-position: 0 0; }
+  to   { background-position: 44px 64px; }
+}
+@keyframes raysSway {
+  from { transform: rotate(-1.5deg) translateX(-1.5%); }
+  to   { transform: rotate(1.5deg) translateX(1.5%); }
 }
 @keyframes grainShift {
   0%   { background-position: 0 0; }
