@@ -5,6 +5,21 @@
   overflow: hidden;
 }
 
+/* Film grain over the whole hub. Sits a hair above the half content on
+   purpose (real grain overlays the image) but must never steal pointer,
+   so pointer-events: none; links and hints stay clickable. */
+.hub::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.06;
+  mix-blend-mode: soft-light;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='grain'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E");
+  background-size: 220px 220px;
+}
+
 /* Split container */
 .split {
 	position: relative;
@@ -15,7 +30,7 @@
 	min-height: 100dvh;
 }
 
-/* A quiet version of the icon's vertical flow: teal sea meeting lavender hair. */
+/* A quiet version of the icon's vertical flow: a teal sea meeting lavender hair. */
 .split::before {
 	content: "";
 	position: absolute;
@@ -34,6 +49,23 @@
 	);
 	box-shadow: 0 0 18px color-mix(in srgb, #d0a8ee 42%, transparent);
 	pointer-events: none;
+}
+
+/* The divider "lens flare" breathes, a soft shimmer between the two halves'
+   accents. Static under prefers-reduced-motion (enabled in the block below). */
+@keyframes dividerBreathe {
+	0%, 100% {
+		opacity: 0.55;
+		box-shadow:
+			0 0 12px color-mix(in srgb, #3eb8af 40%, transparent),
+			0 0 32px color-mix(in srgb, #d0a8ee 30%, transparent);
+	}
+	50% {
+		opacity: 1;
+		box-shadow:
+			0 0 22px color-mix(in srgb, #d0a8ee 55%, transparent),
+			0 0 56px color-mix(in srgb, #3eb8af 45%, transparent);
+	}
 }
 
 @media (min-width: 860px) {
@@ -95,17 +127,37 @@
   }
 }
 
+/* Each half paints, bottom→top: the per-half base gradient, the edge
+   vignette, then the cursor spotlight (--mx/--my default to center before
+   any pointer event) — all one background stack. The drifting aurora blobs
+   on ::before/::after lay above that stack. Tuning tokens (--spotCore,
+   --vignette, --halfBase, blob colors) are set per half further down. */
 .halfBg {
   position: absolute;
   inset: 0;
   z-index: -1;
+  background:
+    radial-gradient(
+      ellipse 110% 110% at calc(var(--mx, 0.5) * 100%) calc(var(--my, 0.5) * 100%),
+      var(--spotCore, transparent) 0%,
+      var(--spotFringe, transparent) 42%,
+      transparent 74%
+    ),
+    radial-gradient(ellipse 85% 85% at 50% 50%, transparent 0%, var(--vignette, rgba(3, 10, 18, 0.35)) 100%),
+    var(--halfBase, #06151c);
   transition: transform 1200ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 .half:hover .halfBg { transform: scale(1.04); }
 
-/* Underwater half — deep teal/blue */
+/* Underwater half — teal/blue */
 .halfUnderwater .halfBg {
-  background:
+  --spotCore:   color-mix(in srgb, #3eb8af 30%, transparent);
+  --spotFringe: color-mix(in srgb, #79e8e0 10%, transparent);
+  --vignette:  rgba(3, 10, 18, 0.38);
+  --blobHigh:  color-mix(in srgb, #79e8e0 24%, transparent);
+  --blobMid:   color-mix(in srgb, #1a8a8a 46%, transparent);
+  --blobLow:   color-mix(in srgb, #2a5a7a 60%, transparent);
+  --halfBase:
     radial-gradient(ellipse 80% 60% at 30% 30%, #1a8a8a 0%, transparent 60%),
     radial-gradient(ellipse 70% 80% at 80% 80%, #2a5a7a 0%, transparent 60%),
     radial-gradient(ellipse 90% 60% at 50% 50%, #0c2733 0%, var(--accent-ink) 80%);
@@ -113,10 +165,73 @@
 
 /* Portrait half — purple gradient */
 .halfPortrait .halfBg {
-  background:
+  --spotCore:   color-mix(in srgb, #d0a8ee 20%, transparent);
+  --spotFringe: color-mix(in srgb, #a478d0 10%, transparent);
+  --vignette:  rgba(5, 2, 10, 0.42);
+  --blobHigh:  color-mix(in srgb, #d0a8ee 26%, transparent);
+  --blobMid:   color-mix(in srgb, #8a4abc 50%, transparent);
+  --blobLow:   color-mix(in srgb, #2a1850 70%, transparent);
+  --halfBase:
     radial-gradient(ellipse 70% 60% at 70% 30%, #6a3a9c 0%, transparent 60%),
     radial-gradient(ellipse 60% 80% at 20% 80%, #8a4abc 0%, transparent 60%),
     radial-gradient(ellipse 90% 70% at 50% 50%, #2a1850 0%, #14082a 80%);
+}
+
+/* Aurora — a slowly drifting multi-blob gradient. The blobby layers live on
+   ::before/::after (not background-position) so the spotlight can own the
+   base stack. Inset negative so the drift never reveals the half's edges;
+   z 0 puts them above the whole background stack but below content/links
+   (z 1), so titles and the covering link stay on top and clickable. */
+.halfBg::before,
+.halfBg::after {
+  content: "";
+  position: absolute;
+  inset: -18%;
+  z-index: 0;
+  pointer-events: none;
+}
+.halfBg::before {
+  background:
+    radial-gradient(ellipse 55% 45% at 30% 32%, var(--blobHigh) 0%, transparent 62%),
+    radial-gradient(ellipse 60% 50% at 70% 70%, var(--blobLow) 0%, transparent 60%);
+}
+.halfBg::after {
+  background:
+    radial-gradient(ellipse 60% 55% at 65% 25%, var(--blobMid) 0%, transparent 62%),
+    radial-gradient(ellipse 45% 55% at 25% 80%, var(--blobHigh) 0%, transparent 60%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .halfBg::before {
+    animation: auroraDriftA 32s ease-in-out infinite alternate;
+  }
+  .halfBg::after {
+    animation: auroraDriftB 21s ease-in-out infinite alternate;
+  }
+  /* Negative delays de-phase the two halves so they never pulse in sync. */
+  .halfPortrait .halfBg::before { animation-delay: -11s; }
+  .halfPortrait .halfBg::after { animation-delay: -7s; }
+
+  /* Divider breathing glow. */
+  .split::before { animation: dividerBreathe 8s ease-in-out infinite; }
+
+  /* Grain shimmer: fine stepped jumps read as shifting film grain. */
+  .hub::after { animation: grainShift 900ms steps(3, jump-none) infinite; }
+}
+
+@keyframes auroraDriftA {
+  from { transform: translate3d(-3%, -2%, 0) scale(1); }
+  to   { transform: translate3d(4%, 5%, 0) scale(1.06); }
+}
+@keyframes auroraDriftB {
+  from { transform: translate3d(3%, 4%, 0) scale(1.03); }
+  to   { transform: translate3d(-5%, -3%, 0) scale(0.98); }
+}
+@keyframes grainShift {
+  0%   { background-position: 0 0; }
+  33%  { background-position: -30px 18px; }
+  66%  { background-position: 22px -28px; }
+  100% { background-position: 0 0; }
 }
 
 /* Content */
