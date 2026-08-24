@@ -8,8 +8,11 @@
     "workers/ig-proxy"
   ],
   "overrides": {
-    "postcss": "8.5.23",
+    "postcss": "8.5.26",
     "sharp": "0.35.3"
+  },
+  "engines": {
+    "node": ">=24"
   },
   "scripts": {
     "dev": "next dev",
@@ -25,17 +28,17 @@
     "check": "npm run lint && npm test && npm run typecheck"
   },
   "dependencies": {
-    "next": "15.5.22",
+    "next": "15.5.23",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.5",
-    "@cloudflare/workers-types": "5.20260726.1",
-    "@types/node": "^22.9.0",
+    "@biomejs/biome": "2.5.10",
+    "@cloudflare/workers-types": "5.20260823.1",
+    "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "playwright": "1.60.0",
+    "playwright": "1.62.1",
     "typescript": "^5.6.3"
   }
 }
