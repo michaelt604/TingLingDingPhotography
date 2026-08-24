@@ -88,13 +88,13 @@ The browser checks require a completed `npm run build` and Python 3 on `PATH`.
 │       ├── contactMailto.ts      # mailto: href builder
 │       └── Footer.tsx
 ├── public/                     # Static assets
-│   ├── favicon.svg
+│   ├── brand-mark-v2.svg
+│   ├── favicon.ico / apple-touch-icon.png
+│   ├── icon-192.png / icon-512.png
 │   ├── site.webmanifest
 │   ├── robots.txt
 │   ├── sitemap.xml
-│   ├── og-default.svg / og-default.png
-│   ├── og-underwater.svg / og-portraits.svg
-│   ├── og-underwater.png / og-portraits.png
+│   ├── og-default.png / og-underwater.png / og-portraits.png
 │   ├── _headers                # Cloudflare security headers
 │   └── _redirects              # Cloudflare URL rewrites
 ├── workers/ig-proxy/            # Cloudflare Instagram Graph API proxy
@@ -351,7 +351,8 @@ Most tweaks live in:
 - [x] Pin and validate the production IG Worker URL
 - [x] Use two Page/System User tokens with dependency-aware health checks
 - [x] Custom 404 page
-- [x] Non-photographic Open Graph fallback (`public/og-default.png`, sourced from the adjacent SVG)
+- [x] Non-photographic Open Graph fallback (`public/og-default.png`,
+      `og-underwater.png`, `og-portraits.png`) and raster favicon/PWA icons
 - [x] Resize feed images through the ig-proxy `/img` route (KV-cached,
       Cloudflare Image Resizing); full `next/image` optimization is
       still off (`unoptimized` in `next.config.mjs`)
