@@ -1,9 +1,13 @@
+'use client';
+
 import Link from 'next/link';
+import { useContact } from './components/ContactProvider';
 import styles from './page.module.css';
-import { CONTACT_EMAIL } from './components/contactMailto';
 
 export default function HubPage() {
+  const { open: openContact } = useContact();
   return (
+
     <main data-side="hub" className={styles.hub} id="main" tabIndex={-1}>
       <h1 className="srOnly">TingLingDing Photography</h1>
 
@@ -12,13 +16,13 @@ export default function HubPage() {
         <span className={styles.siteType}>Photography</span>
       </div>
 
-      <a
+      <button
+        type="button"
         className={styles.homeContact}
-        href={`mailto:${CONTACT_EMAIL}`}
-        aria-label="Get in touch — email TingLingDing Photography"
+        onClick={openContact}
       >
         Get in touch
-      </a>
+      </button>
 
       <div className={styles.split}>
         <section
