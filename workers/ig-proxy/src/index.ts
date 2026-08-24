@@ -124,8 +124,16 @@ const CORS = (origin: string) => ({
 	Vary: "Origin",
 });
 
+// Hardening headers applied to every Worker-generated response so browsers
+// never sniff a divergent content type or execute anything in context.
+const SECURITY_HEADERS = {
+	"X-Content-Type-Options": "nosniff",
+	"Content-Security-Policy": "default-src 'none'; sandbox",
+} as const;
+
 const JSON_HEADERS = (origin: string, cacheControl: string) => ({
 	...CORS(origin),
+	...SECURITY_HEADERS,
 	"Content-Type": "application/json",
 	"Cache-Control": cacheControl,
 });
@@ -148,6 +156,23 @@ export function errorResponse(
 	status = 500,
 ): Response {
 	return jsonResponse({ error: message }, origin, status, "no-store");
+}
+
+/**
+ * Canonical 502 for an unavailable upstream feed. Fresh failures are served
+ * with `no-store`; retries inside the negative-cache window pass a short
+ * `max-age` so clients don't stampede a known-down upstream.
+ */
+function unavailableResponse(
+	origin: string,
+	cacheControl = "no-store",
+): Response {
+	return jsonResponse(
+		{ error: "Instagram feed is temporarily unavailable." },
+		origin,
+		502,
+		cacheControl,
+	);
 }
 
 interface ApiCredentials {
@@ -705,6 +730,49 @@ function parseCacheEnvelope(payload: unknown): CacheHit | null {
 	};
 }
 
+// Negative caching: when a Graph fetch fails, a small failure envelope is
+// stored under the same cache keys as success envelopes with a short TTL,
+// so immediate retries fail fast instead of re-hitting graph.facebook.com.
+// The shape carries a `failure` marker and no `body`, so it can never
+// satisfy parseCacheEnvelope's exact-key success check.
+const NEGATIVE_CACHE_TTL_SECONDS = 30;
+
+interface FailureEnvelope {
+	failure: true;
+	version: typeof CACHE_ENVELOPE_VERSION;
+	expiresAt: number;
+}
+
+function createFailureEnvelope(): FailureEnvelope {
+	return {
+		failure: true,
+		version: CACHE_ENVELOPE_VERSION,
+		expiresAt: Date.now() + NEGATIVE_CACHE_TTL_SECONDS * 1000,
+	};
+}
+
+/** Returns the remaining TTL in seconds for a fresh failure envelope, else null. */
+function parseFailureEnvelope(payload: unknown): number | null {
+	if (!payload || typeof payload !== "object" || Array.isArray(payload))
+		return null;
+	const candidate = payload as Record<string, unknown>;
+	if (
+		Object.keys(candidate).sort().join(",") !==
+			"expiresAt,failure,version" ||
+		candidate.failure !== true ||
+		candidate.version !== CACHE_ENVELOPE_VERSION ||
+		typeof candidate.expiresAt !== "number" ||
+		!Number.isFinite(candidate.expiresAt)
+	) {
+		return null;
+	}
+	const remainingTtl = Math.min(
+		NEGATIVE_CACHE_TTL_SECONDS,
+		Math.floor((candidate.expiresAt - Date.now()) / 1000),
+	);
+	return remainingTtl > 0 ? remainingTtl : null;
+}
+
 function logCacheFailure(
 	operation: "l1-read" | "l1-write" | "kv-read" | "kv-write",
 	error: unknown,
@@ -784,6 +852,46 @@ async function persistCaches(
 	await Promise.all([
 		writeLocalCache(cacheKey, envelope, CACHE_TTL_SECONDS),
 		writeGlobalCache(namespace, kvCacheKey, envelope),
+	]);
+}
+
+async function writeLocalFailureCache(cacheKey: Request): Promise<void> {
+	try {
+		await caches.default.put(
+			cacheKey,
+			new Response(JSON.stringify(createFailureEnvelope()), {
+				headers: {
+					"Cache-Control": `public, max-age=${NEGATIVE_CACHE_TTL_SECONDS}`,
+				},
+			}),
+		);
+	} catch (error) {
+		logCacheFailure("l1-write", error);
+	}
+}
+
+async function writeGlobalFailureCache(
+	namespace: KVNamespace | undefined,
+	kvCacheKey: string,
+): Promise<void> {
+	if (!namespace) return;
+	try {
+		await namespace.put(kvCacheKey, JSON.stringify(createFailureEnvelope()), {
+			expirationTtl: NEGATIVE_CACHE_TTL_SECONDS,
+		});
+	} catch (error) {
+		logCacheFailure("kv-write", error);
+	}
+}
+
+async function persistFailureCaches(
+	namespace: KVNamespace | undefined,
+	cacheKey: Request,
+	kvCacheKey: string,
+): Promise<void> {
+	await Promise.all([
+		writeLocalFailureCache(cacheKey),
+		writeGlobalFailureCache(namespace, kvCacheKey),
 	]);
 }
 
@@ -1053,7 +1161,7 @@ async function checkGraphHealth(
 // the route degrades gracefully and the site never loses images.
 const IMAGE_ENVELOPE_VERSION = 1;
 const IMAGE_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
-const IMAGE_MIN_WIDTH = 100;
+const IMAGE_MIN_WIDTH = 320;
 const IMAGE_MAX_WIDTH = 1600;
 const IMAGE_DEFAULT_WIDTH = 800;
 
@@ -1064,13 +1172,26 @@ interface ImageEnvelope {
 	data: string;
 }
 
+// Widths snap to the nearest resize bucket so attackers can't request an
+// unbounded set of distinct widths (each would be a separate KV entry and
+// upstream resize). Out-of-range values clamp to the edge buckets.
+const IMAGE_WIDTH_BUCKETS = [320, 480, 800, 1200, 1600] as const;
+
 export function resolveImageWidth(value: unknown): number {
 	if (typeof value !== "string" || !/^\d+$/.test(value)) {
 		return IMAGE_DEFAULT_WIDTH;
 	}
 	const width = Number(value);
 	if (!Number.isSafeInteger(width)) return IMAGE_DEFAULT_WIDTH;
-	return Math.min(IMAGE_MAX_WIDTH, Math.max(IMAGE_MIN_WIDTH, width));
+	if (width <= IMAGE_MIN_WIDTH) return IMAGE_MIN_WIDTH;
+	if (width >= IMAGE_MAX_WIDTH) return IMAGE_MAX_WIDTH;
+	let nearest: number = IMAGE_WIDTH_BUCKETS[0];
+	for (const bucket of IMAGE_WIDTH_BUCKETS) {
+		if (Math.abs(bucket - width) < Math.abs(nearest - width)) {
+			nearest = bucket;
+		}
+	}
+	return nearest;
 }
 
 async function buildImageKvKey(source: string, width: number): Promise<string> {
@@ -1100,6 +1221,7 @@ function imageResponse(contentType: string, data: string): Response {
 		headers: {
 			"Content-Type": contentType,
 			"Cache-Control": `public, max-age=${IMAGE_CACHE_TTL_SECONDS}, immutable`,
+			...SECURITY_HEADERS,
 		},
 	});
 }
@@ -1110,6 +1232,7 @@ function imageErrorResponse(message: string, status: number): Response {
 		headers: {
 			"Content-Type": "application/json",
 			"Cache-Control": "no-store",
+			...SECURITY_HEADERS,
 		},
 	});
 }
@@ -1169,7 +1292,10 @@ async function handleImageRequest(
 		if (!upstream.ok) {
 			return imageErrorResponse("Image fetch failed.", upstream.status);
 		}
-		const contentType = upstream.headers.get("Content-Type") ?? "image/jpeg";
+		const contentType = upstream.headers.get("Content-Type") ?? "";
+		if (!/^image\/(jpeg|png|webp|avif|gif)$/i.test(contentType)) {
+			return imageErrorResponse("Unsupported image type.", 415);
+		}
 		const data = bytesToBase64(new Uint8Array(await upstream.arrayBuffer()));
 		if (env.IG_FEED_CACHE) {
 			ctx?.waitUntil(
@@ -1208,12 +1334,13 @@ export default {
 				JSON.stringify({ error: "Service configuration is incomplete." }),
 				{
 					status: 503,
-					headers: {
-						"Content-Type": "application/json",
-						"Cache-Control": "no-store",
-					},
+				headers: {
+					"Content-Type": "application/json",
+					"Cache-Control": "no-store",
+					...SECURITY_HEADERS,
 				},
-			);
+			},
+		);
 		}
 
 		const requestOrigin = request.headers.get("Origin");
@@ -1263,11 +1390,7 @@ export default {
 
 		const side = url.pathname.replace(/^\//, "");
 		if (!isFeedSide(side)) {
-			return errorResponse(
-				`Unknown route: ${side}. Use /underwater or /portraits.`,
-				effectiveOrigin,
-				404,
-			);
+			return errorResponse("Not found.", effectiveOrigin, 404);
 		}
 		const route = routeFor(side, env);
 
@@ -1311,6 +1434,12 @@ export default {
 					`public, max-age=${localHit.remainingTtl}`,
 				);
 			}
+			if (parseFailureEnvelope(localCached)) {
+				return unavailableResponse(
+					effectiveOrigin,
+					`public, max-age=${NEGATIVE_CACHE_TTL_SECONDS}`,
+				);
+			}
 
 			const kvCacheKey = await buildKvCacheKey(cacheKey);
 			const globalCached = await readGlobalCache(env.IG_FEED_CACHE, kvCacheKey);
@@ -1325,6 +1454,12 @@ export default {
 					effectiveOrigin,
 					200,
 					`public, max-age=${globalHit.remainingTtl}`,
+				);
+			}
+			if (parseFailureEnvelope(globalCached)) {
+				return unavailableResponse(
+					effectiveOrigin,
+					`public, max-age=${NEGATIVE_CACHE_TTL_SECONDS}`,
 				);
 			}
 
@@ -1360,11 +1495,11 @@ export default {
 					source: "media",
 					status: mediaResult.status,
 				});
-				return errorResponse(
-					"Instagram feed is temporarily unavailable.",
-					effectiveOrigin,
-					502,
+				await scheduleCacheWork(
+					ctx,
+					persistFailureCaches(env.IG_FEED_CACHE, cacheKey, kvCacheKey),
 				);
+				return unavailableResponse(effectiveOrigin);
 			}
 
 			if (collaborativeResult.outcome === "failure") {

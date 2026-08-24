@@ -1615,13 +1615,16 @@ test("handler rejects unsupported methods", async () => {
 	assert.equal(response.headers.get("Cache-Control"), "no-store");
 });
 
-test("image width clamps to the supported range and defaults when invalid", () => {
+test("image widths snap to fixed buckets and clamp at the edges", () => {
 	assert.equal(resolveImageWidth(null), 800);
 	assert.equal(resolveImageWidth("abc"), 800);
 	assert.equal(resolveImageWidth(""), 800);
-	assert.equal(resolveImageWidth("50"), 100);
-	assert.equal(resolveImageWidth("2000"), 1600);
-	assert.equal(resolveImageWidth("900"), 900);
+	assert.equal(resolveImageWidth("100"), 320);
+	assert.equal(resolveImageWidth("50"), 320);
+	assert.equal(resolveImageWidth("500"), 480);
+	assert.equal(resolveImageWidth("900"), 800);
+	assert.equal(resolveImageWidth("1201"), 1200);
+	assert.equal(resolveImageWidth("9999"), 1600);
 });
 
 test("image proxy rejects missing, foreign, and non-https sources", async () => {
@@ -1679,7 +1682,7 @@ test("image proxy passes resize options upstream and caches the result in KV", a
 		"https://scontent.cdninstagram.com/v/t51/photo.jpg",
 	);
 	const imageOptions = upstreamCall.cf?.image as Record<string, unknown> | undefined;
-	assert.equal(imageOptions?.width, 600);
+	assert.equal(imageOptions?.width, 480);
 	assert.equal(imageOptions?.fit, "scale-down");
 	assert.equal(imageOptions?.quality, 85);
 	assert.equal(imageOptions?.format, "auto");
@@ -1748,4 +1751,122 @@ test("image proxy upstream failures return an error and never write to KV", asyn
 			assert.equal(capture.puts.length, 0);
 		},
 	);
+});
+
+test("image proxy rejects non-image content types without caching", async () => {
+	const { namespace, capture } = createKvMock();
+	const pending: Promise<unknown>[] = [];
+	const ctx = {
+		waitUntil: (promise: Promise<unknown>) => {
+			pending.push(promise);
+		},
+	} as unknown as ExecutionContext;
+
+	await withWorkerMocks(
+		async () =>
+			new Response("<html>not an image</html>", {
+				headers: { "Content-Type": "text/html; charset=utf-8" },
+			}),
+		async () => {
+			const response = await worker.fetch(
+				new Request(
+					"https://worker.test/img?u=https%3A%2F%2Fscontent.cdninstagram.com%2Fv%2Ft51%2Fphoto.jpg",
+				),
+				{ ...readyEnv, IG_FEED_CACHE: namespace },
+				ctx,
+			);
+			assert.equal(response.status, 415);
+			assert.equal(response.headers.get("Cache-Control"), "no-store");
+			assert.deepEqual(await response.json(), {
+				error: "Unsupported image type.",
+			});
+		},
+	);
+	await Promise.all(pending);
+	assert.equal(capture.puts.length, 0);
+});
+
+test("image responses carry nosniff and CSP hardening headers", async () => {
+	await withWorkerMocks(
+		async () =>
+			new Response(new Uint8Array([1, 2, 3]), {
+				headers: { "Content-Type": "image/webp" },
+			}),
+		async () => {
+			const source =
+				"https://worker.test/img?u=https%3A%2F%2Fscontent.cdninstagram.com%2Fv%2Ft51%2Fphoto.jpg";
+			const ok = await worker.fetch(new Request(source), readyEnv);
+			assert.equal(ok.status, 200);
+			assert.equal(ok.headers.get("X-Content-Type-Options"), "nosniff");
+			assert.equal(
+				ok.headers.get("Content-Security-Policy"),
+				"default-src 'none'; sandbox",
+			);
+
+			const bad = await worker.fetch(
+				new Request("https://worker.test/img"),
+				readyEnv,
+			);
+			assert.equal(bad.status, 400);
+			assert.equal(bad.headers.get("X-Content-Type-Options"), "nosniff");
+			assert.equal(
+				bad.headers.get("Content-Security-Policy"),
+				"default-src 'none'; sandbox",
+			);
+		},
+	);
+});
+
+test("unknown routes return a static message without echoing input", async () => {
+	await withWorkerMocks(healthyGraphFetch, async () => {
+		const response = await worker.fetch(
+			new Request("https://worker.test/secret-admin-route"),
+			readyEnv,
+		);
+		assert.equal(response.status, 404);
+		const text = await response.text();
+		assert.deepEqual(JSON.parse(text), { error: "Not found." });
+		assert.equal(text.includes("secret-admin-route"), false);
+	});
+});
+
+test("failed feed fetches are served from the negative cache on immediate retry", async () => {
+	const { namespace, capture } = createKvMock();
+	let upstreamCalls = 0;
+	await withWorkerMocks(
+		async () => {
+			upstreamCalls += 1;
+			return new Response(null, { status: 503 });
+		},
+		async () => {
+			const env = { ...readyEnv, IG_FEED_CACHE: namespace };
+			const first = await worker.fetch(
+				new Request("https://worker.test/underwater"),
+				env,
+			);
+			assert.equal(first.status, 502);
+			assert.deepEqual(await first.json(), {
+				error: "Instagram feed is temporarily unavailable.",
+			});
+			assert.equal(first.headers.get("Cache-Control"), "no-store");
+
+			const second = await worker.fetch(
+				new Request("https://worker.test/underwater"),
+				env,
+			);
+			assert.equal(second.status, 502);
+			assert.deepEqual(await second.json(), {
+				error: "Instagram feed is temporarily unavailable.",
+			});
+			assert.equal(second.headers.get("Cache-Control"), "public, max-age=30");
+			// One upstream call per Graph edge (owned + collaborative) in the
+			// first request; the retry must add zero.
+			assert.equal(upstreamCalls, 2, "retry must not hit upstream again");
+		},
+	);
+	const failurePut = capture.puts.find((entry) => entry.expirationTtl === 30);
+	assert.ok(failurePut, "expected a short-TTL negative cache entry in KV");
+	const envelope = JSON.parse(failurePut.value) as Record<string, unknown>;
+	assert.equal(envelope.failure, true);
+	assert.equal(envelope.body, undefined);
 });
