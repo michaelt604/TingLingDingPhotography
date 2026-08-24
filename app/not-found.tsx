@@ -1,11 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import type { Metadata } from 'next';
 import styles from './not-found.module.css';
-
-export const metadata: Metadata = {
-  title: 'Page not found | TingLingDing Photography',
-};
 
 export default function NotFound() {
   return (

@@ -9,6 +9,8 @@ export const metadata: Metadata = {
     'Portrait photography by TingLingDing. Intimate, considered, made for faces.',
   alternates: { canonical: '/portraits/' },
   openGraph: {
+    type: 'website',
+    siteName: 'TingLingDing Photography',
     url: '/portraits/',
     images: [{ url: '/og-portraits.png', width: 1200, height: 630, alt: 'Portrait photography' }],
   },

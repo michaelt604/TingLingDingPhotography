@@ -9,6 +9,8 @@ export const metadata: Metadata = {
     'Underwater and nature photography by TingLingDing. Cinematic, deep, full of blue.',
   alternates: { canonical: '/underwater/' },
   openGraph: {
+    type: 'website',
+    siteName: 'TingLingDing Photography',
     url: '/underwater/',
     images: [{ url: '/og-underwater.png', width: 1200, height: 630, alt: 'Underwater and nature photography' }],
   },

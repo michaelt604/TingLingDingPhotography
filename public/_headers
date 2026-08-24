@@ -12,13 +12,12 @@
   # static.cloudflareinsights.com hosts the Web Analytics beacon injected by Pages.
   # ig-proxy.michaelt604.workers.dev serves the resized feed images via its /img route.
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://*.cloudflare.com https://*.challenges.cloudflare.com https://static.cloudflareinsights.com; img-src 'self' https://*.cdninstagram.com https://*.fbcdn.net https://ig-proxy.michaelt604.workers.dev data:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' https://ig-proxy.michaelt604.workers.dev; frame-src https://www.instagram.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' mailto:
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
 
 
 # Cache static assets aggressively
 /_next/static/*
-  Cache-Control: public, max-age=31536000, immutable
-
-/favicon.svg
   Cache-Control: public, max-age=31536000, immutable
 
 /brand-mark-v2.svg
