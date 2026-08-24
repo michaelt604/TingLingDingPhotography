@@ -121,13 +121,6 @@ img { color: transparent; }
   line-height: 1.02;
   text-wrap: balance;
 }
-.serif-headline {
-  font-family: var(--ff-serif);
-  font-weight: 400;
-  letter-spacing: -0.005em;
-  line-height: 1.05;
-  text-wrap: balance;
-}
 .mono {
   font-family: var(--ff-mono);
   font-size: 11px;
@@ -143,8 +136,6 @@ img { color: transparent; }
   margin: 0 auto;
   padding-inline: clamp(20px, 4vw, 48px);
 }
-.section { padding-block: clamp(60px, 10vw, 120px); }
-
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -171,29 +162,6 @@ img { color: transparent; }
   color: var(--accent-ink);
 }
 .btn--primary:hover { background: var(--accent-2); }
-
-.btn--ghost {
-  border-color: var(--line);
-  color: var(--ink);
-}
-.btn--ghost:hover {
-  border-color: var(--ink);
-  background: var(--line-soft);
-}
-
-.btn--text {
-  padding: 8px 0;
-  color: var(--ink);
-  border-bottom: 1px solid var(--line);
-  border-radius: 0;
-}
-.btn--text:hover { border-color: var(--ink); }
-
-/* ---------- Motion ---------- */
-.fade-in { animation: fadeIn 600ms ease both; }
-.fade-up { animation: fadeUp 800ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 
 /* ---------- Focus ---------- */
 :focus-visible {
@@ -239,6 +207,8 @@ img { color: transparent; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
+    /* Infinite loops (e.g. .loadingDot) must not hot-loop at ~0 duration. */
+    animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
   }
 }

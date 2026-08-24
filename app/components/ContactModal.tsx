@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { Contact } from './Contact';
+import { lockBodyScroll } from './bodyScrollLock';
 import styles from './ContactModal.module.css';
 
 interface Props {
@@ -34,8 +35,7 @@ export function ContactModal({ open, onClose, side }: Props) {
     previouslyFocusedRef.current = document.activeElement as HTMLElement;
 
     // Lock body scroll while modal is open
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const unlockBody = lockBodyScroll();
 
     // Move focus into the dialog (first form input, fall back to dialog itself)
     const dialog = dialogRef.current;
@@ -92,7 +92,7 @@ export function ContactModal({ open, onClose, side }: Props) {
     window.addEventListener('keydown', onKey);
 
     return () => {
-      document.body.style.overflow = prevOverflow;
+      unlockBody();
       window.removeEventListener('keydown', onKey);
       // Restore focus to whatever opened the modal
       previouslyFocusedRef.current?.focus();

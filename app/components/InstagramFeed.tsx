@@ -19,8 +19,9 @@ import {
 } from "./instagramData";
 import { getInstagramEmbedUrl } from "./instagramEmbed";
 import { getInstagramFeedDisplayState } from "./instagramFeedState";
-import { fetchWithTimeout } from "./instagramFetch";
 import { buildOptimizedImageUrl } from "./instagramImageUrl";
+import { fetchWithTimeout } from "./instagramFetch";
+import { lockBodyScroll } from "./bodyScrollLock";
 
 interface Props {
 	/** IG handle without the @ */
@@ -348,12 +349,13 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 							crossOrigin="anonymous"
 						/>
 						<div className={styles.grid}>
-							{posts.map((post) => (
+							{posts.map((post, index) => (
 								<PostTile
 									key={post.id}
 									post={post}
 									handle={handle}
 									proxyUrl={proxyUrl}
+									priority={index === 0}
 								/>
 							))}
 						</div>
@@ -447,7 +449,7 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 						{loadMoreError ? (
 							<div className={styles.retryBlock}>
 								<p className={styles.retryError} role="alert">
-									Couldn&apos;t load collaborator posts. {loadMoreError}
+									Couldn&apos;t load more posts. {loadMoreError}
 								</p>
 								<button
 									type="button"
@@ -466,8 +468,8 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 								aria-live="polite"
 							>
 								{isLoadingMore
-									? "Loading collaborator posts…"
-									: "Checking collaborator posts…"}
+									? "Loading more posts…"
+									: "Scroll for more"}
 							</p>
 						)}
 					</div>
@@ -482,6 +484,8 @@ interface PostTileProps {
 	handle: string;
 	/** ig-proxy origin used to build resized /img URLs; undefined disables resizing. */
 	proxyUrl: string | undefined;
+	/** True only for the first visible tile (the likely LCP image). */
+	priority?: boolean;
 }
 
 /**
@@ -502,9 +506,8 @@ const LIGHTBOX_IMAGE_WIDTH = 1600;
  * lightbox viewer. Carousel arrows are siblings of the image button,
  * sitting above it in z-order so a tap on a chevron does not also
  * open the viewer. The Instagram permalink lives ONLY inside the
- * lightbox; there is no direct tile-level link anymore.
  */
-function PostTile({ post, handle, proxyUrl }: PostTileProps) {
+function PostTile({ post, handle, proxyUrl, priority = false }: PostTileProps) {
 	const isCarousel = post.media_type === "CAROUSEL_ALBUM";
 	const children =
 		isCarousel && Array.isArray(post.children) ? post.children : null;
@@ -652,6 +655,7 @@ function PostTile({ post, handle, proxyUrl }: PostTileProps) {
 				triggerRef={triggerRef}
 				onPointerDown={handlePointerDown}
 				onPointerUp={handlePointerUp}
+				priority={priority}
 			/>
 			{transition ? (
 				// The outgoing image must paint above the live image button for
@@ -789,6 +793,8 @@ interface TileImageButtonProps {
 	triggerRef: RefObject<HTMLButtonElement | null>;
 	onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void;
 	onPointerUp: (event: PointerEvent<HTMLButtonElement>) => void;
+	/** next/image priority; true only for the first tile of the initial grid. */
+	priority?: boolean;
 }
 function TileImageButton({
 	src,
@@ -800,6 +806,7 @@ function TileImageButton({
 	triggerRef,
 	onPointerDown,
 	onPointerUp,
+	priority = false,
 }: TileImageButtonProps) {
 	const [imageErrorSrc, setImageErrorSrc] = useState<string | null>(null);
 	const imageError = imageErrorSrc === src;
@@ -818,6 +825,7 @@ function TileImageButton({
 				alt=""
 				fill
 				sizes="(min-width: 1024px) 30vw, (min-width: 540px) 33vw, 50vw"
+				priority={priority}
 				unoptimized
 				className={`${styles.tileImage}${transitionDirection ? ` ${transitionDirection === 1 ? styles.tileImageEnterNext : styles.tileImageEnterPrev}` : ""}`}
 				onLoad={() => {
@@ -924,17 +932,9 @@ function Lightbox({
 	// Body-overflow lock while the lightbox is open (prevents the
 	// underlying feed from scrolling under the modal).
 	useEffect(() => {
-		const previousOverflow = document.body.style.overflow;
-		const previousPaddingRight = document.body.style.paddingRight;
-		const scrollbarWidth =
-			window.innerWidth - document.documentElement.clientWidth;
-		document.body.style.overflow = "hidden";
-		if (scrollbarWidth > 0)
-			document.body.style.paddingRight = `${scrollbarWidth}px`;
-		return () => {
-			document.body.style.overflow = previousOverflow;
-			document.body.style.paddingRight = previousPaddingRight;
-		};
+		// Body-scroll lock while the lightbox is open (prevents the
+		// underlying feed from scrolling under the modal).
+		return lockBodyScroll();
 	}, []);
 	// Keyboard nav: ArrowLeft / ArrowRight drive the same wrapped
 	// handlers so swipes and key presses share the snapshot path.
@@ -981,10 +981,16 @@ function Lightbox({
 				const first = focusable[0];
 				const last = focusable.at(-1);
 				if (!first || !last) return;
-				if (event.shiftKey && document.activeElement === first) {
+				// If focus has escaped the lightbox (e.g. the browser moved it
+				// outside), pull it back instead of wrapping blindly.
+				const escaped = !event.currentTarget.contains(document.activeElement);
+				if (event.shiftKey && (document.activeElement === first || escaped)) {
 					event.preventDefault();
 					last.focus();
-				} else if (!event.shiftKey && document.activeElement === last) {
+				} else if (
+					!event.shiftKey &&
+					(document.activeElement === last || escaped)
+				) {
 					event.preventDefault();
 					first.focus();
 				}

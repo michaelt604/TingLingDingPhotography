@@ -1,6 +1,12 @@
 'use client';
 
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useState,
+  type ReactNode,
+} from 'react';
 import { usePathname } from 'next/navigation';
 import { ContactModal } from './ContactModal';
 
@@ -22,9 +28,14 @@ export function ContactProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const side = pathname.startsWith('/underwater') ? 'underwater' : 'portraits';
 
+  // Stable identity: ContactModal's [open, onClose] effect re-runs whenever
+  // this component re-renders while open, so an inline arrow would re-trigger
+  // its focus restore/cleanup on every render.
+  const close = useCallback(() => setIsOpen(false), []);
+
   const value: ContactContextValue = {
     open: () => setIsOpen(true),
-    close: () => setIsOpen(false),
+    close,
   };
 
   return (
@@ -32,7 +43,7 @@ export function ContactProvider({ children }: { children: ReactNode }) {
       {children}
       <ContactModal
         open={isOpen}
-        onClose={() => setIsOpen(false)}
+        onClose={close}
         side={side}
       />
     </ContactContext.Provider>

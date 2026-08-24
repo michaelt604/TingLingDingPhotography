@@ -25,7 +25,9 @@ export function buildContactMailto({
     ['Location', location],
   ].flatMap(([label, value]) => (value?.trim() ? [`${label}: ${value.trim()}`] : []));
 
-  if (message.trim()) parts.push('', message.trim());
+  // Cap the message so the encoded mailto URL stays within practical
+  // mail-client length limits (~2000 chars total URL).
+  if (message.trim()) parts.push('', message.trim().slice(0, 1500));
 
   return (
     `mailto:${CONTACT_EMAIL}` +

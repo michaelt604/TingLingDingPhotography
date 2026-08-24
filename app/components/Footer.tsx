@@ -15,6 +15,7 @@ interface Props {
  * side === 'underwater' | 'portraits'.
  */
 export function Footer({ side = 'underwater', igHandle, igProfileUrl }: Props) {
+  // Frozen at build time with `next export`; refreshes on every deploy.
   const year = new Date().getFullYear();
   return (
     <footer
