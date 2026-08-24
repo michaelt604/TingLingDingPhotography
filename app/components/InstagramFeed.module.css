@@ -87,7 +87,7 @@
 .placeholderNote {
   margin: 0;
   font-family: var(--ff-mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.1em;
   color: var(--ink-mute);
   text-align: center;

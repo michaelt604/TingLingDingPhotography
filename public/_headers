@@ -22,3 +22,15 @@
 
 /brand-mark-v2.svg
   Cache-Control: public, max-age=31536000, immutable
+
+/icon-*.png
+  Cache-Control: public, max-age=31536000, immutable
+
+/apple-touch-icon.png
+  Cache-Control: public, max-age=31536000, immutable
+
+/favicon.ico
+  Cache-Control: public, max-age=86400
+
+/og-*.png
+  Cache-Control: public, max-age=604800

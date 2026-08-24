@@ -15,7 +15,7 @@ export default function HubPage() {
       <a
         className={styles.homeContact}
         href={`mailto:${CONTACT_EMAIL}`}
-        aria-label="Email TingLingDing Photography"
+        aria-label="Get in touch — email TingLingDing Photography"
       >
         Get in touch
       </a>
