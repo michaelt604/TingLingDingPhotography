@@ -44,3 +44,7 @@ preview/
 moodboard/
 playwright-bridge-deps/
 .worktrees/
+# Personal OMP machine-bootstrap scripts; local-only, never commit.
+tools/build-omp-portable.ps1
+tools/install-omp-tooling.ps1
+tools/pack-claude-profile.ps1
