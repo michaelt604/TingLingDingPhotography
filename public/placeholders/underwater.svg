@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1150" role="img" aria-labelledby="title desc">
+  <title id="title">Underwater collection placeholder</title>
+  <desc id="desc">Abstract local placeholder artwork marked for replacement with selected photography.</desc>
+  <defs>
+    <linearGradient id="water" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#1e4d4a"/><stop offset=".52" stop-color="#153b3b"/><stop offset="1" stop-color="#102a2a"/></linearGradient>
+    <radialGradient id="glow" cx=".16" cy=".05" r=".85"><stop stop-color="#d6c494" stop-opacity=".44"/><stop offset="1" stop-color="#d6c494" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="900" height="1150" fill="url(#water)"/>
+  <rect width="900" height="1150" fill="url(#glow)"/>
+  <g fill="none" stroke="#b9d7c5" stroke-opacity=".25" stroke-width="4">
+    <path d="M-80 710C120 530 265 850 452 668s310-180 560-18"/><path d="M-80 800c200-180 345 140 532-42s310-180 560-18"/><path d="M-80 890c200-180 345 140 532-42s310-180 560-18"/>
+  </g>
+  <g fill="#e6d9b1" fill-opacity=".7"><circle cx="205" cy="305" r="8"/><circle cx="240" cy="256" r="4"/><circle cx="285" cy="200" r="6"/><circle cx="336" cy="139" r="3"/></g>
+</svg>

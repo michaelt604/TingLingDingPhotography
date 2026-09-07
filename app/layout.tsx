@@ -23,7 +23,7 @@ const jetBrainsMono = JetBrains_Mono({
 const siteUrl = 'https://tinglingdingphotography.com';
 const siteName = 'TingLingDing Photography';
 const siteDescription =
-  'TingLingDing — photography across two worlds. Underwater & nature, and portraits.';
+  'TingLingDing — photography across underwater, portraits, and climbing.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -36,8 +36,8 @@ export const metadata: Metadata = {
   authors: [{ name: 'TingLingDing' }],
   keywords: [
     'underwater photography',
-    'nature photography',
     'portrait photography',
+    'climbing photography',
     'TingLingDing',
   ],
   alternates: { canonical: '/' },
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
         url: '/og-default.png',
         width: 1200,
         height: 630,
-        alt: 'TingLingDing Photography — underwater, nature, and portraits',
+        alt: 'TingLingDing Photography — underwater, portraits, and climbing',
       },
     ],
   },
@@ -73,7 +73,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: '#07111a',
+  themeColor: '#111214',
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',

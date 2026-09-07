@@ -1174,12 +1174,12 @@ interface FeedHeaderProps {
 }
 
 function FeedHeader({ handle, profileUrl, side }: FeedHeaderProps) {
-	const title = side === "underwater" ? "Underwater & Nature" : "Portraits";
+	const title = side === "underwater" ? "Underwater" : "Portraits";
 	return (
 		<header className={styles.head}>
 			<div className={styles.titleCopy}>
 				<span className={styles.kicker}>TingLingDing Photography</span>
-				<h1 className={`display ${styles.title}`}>{title}</h1>
+				<h3 className={`display ${styles.title}`}>{title}</h3>
 			</div>
 			<a
 				className={styles.follow}

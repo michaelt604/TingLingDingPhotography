@@ -1,40 +1,49 @@
 'use client';
 
 import Link from 'next/link';
-import Image from 'next/image';
 import { useContact } from './ContactProvider';
 import styles from './SiteNav.module.css';
 
+type Collection = 'underwater' | 'portraits' | 'climbing';
+
 interface Props {
-  current: 'underwater' | 'portraits';
+  current: Collection | 'hub';
 }
 
 /**
  * SiteNav
- * Sticky top nav for the two side pages (underwater, portraits).
+ * Sticky top nav for the collection pages.
  * - Brand mark on the left
  * - "Get in touch" pill (opens the contact modal — available on every page)
- * - One link to the OTHER side, named plainly ("Underwater" / "Portrait")
+ * - A compact link to each collection, with the current page exposed to assistive technology
  */
 export function SiteNav({ current }: Props) {
   const { open: openContact } = useContact();
-
-  const otherLabel = current === 'underwater' ? 'Portrait' : 'Underwater';
-  const otherHref = current === 'underwater' ? '/portraits/' : '/underwater/';
+  const collections: Array<{ key: Collection; label: string; href: string }> = [
+    { key: 'underwater', label: 'Underwater', href: '/underwater/' },
+    { key: 'portraits', label: 'Portraits', href: '/portraits/' },
+    { key: 'climbing', label: 'Climbing', href: '/climbing/' },
+  ];
 
   return (
     <header className={styles.nav}>
       <Link href="/" className={styles.brand} aria-label="TingLingDing Photography">
-        <span className={styles.brandMark} aria-hidden="true">
-          <Image src="/brand-mark-v2.svg" alt="" width={24} height={24} unoptimized />
-        </span>
         <span className={styles.brandText}>TingLingDing</span>
       </Link>
 
       <div className={styles.actions}>
-        <Link href={otherHref} className={styles.link} aria-label={`Switch to ${otherLabel}`}>
-          <span>{otherLabel}</span>
-        </Link>
+        <nav className={styles.links} aria-label="Primary">
+          {collections.map((collection) => (
+            <Link
+              key={collection.key}
+              href={collection.href}
+              className={styles.link}
+              aria-current={current === collection.key ? 'page' : undefined}
+            >
+              {collection.label}
+            </Link>
+          ))}
+        </nav>
         <button
           type="button"
           onClick={openContact}

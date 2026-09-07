@@ -50,8 +50,8 @@ function Field({ id, label, value, onChange, type = 'text', textarea, required, 
 interface Props {
   heading?: string;
   headingId?: string;
-  /** Side the contact section is on — only affects the placeholder text */
-  side?: 'underwater' | 'portraits';
+  /** Collection context for the modal; copy stays neutral across collections. */
+  side?: 'underwater' | 'portraits' | 'climbing' | 'hub';
 }
 
 /**
@@ -66,7 +66,6 @@ interface Props {
 export function Contact({
   heading = 'Get in touch',
   headingId,
-  side = 'portraits',
 }: Props) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -93,10 +92,7 @@ export function Contact({
     window.location.assign(href);
   };
 
-  const placeholderTopic =
-    side === 'underwater'
-      ? 'e.g. Underwater session inquiry'
-      : 'e.g. Portrait session inquiry';
+  const placeholderTopic = 'e.g. A project, collaboration, or question';
 
   return (
     <section className={styles.contact} id="contact" aria-label="Contact">

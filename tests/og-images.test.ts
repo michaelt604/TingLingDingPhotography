@@ -5,7 +5,7 @@ import test from "node:test";
 
 const appDir = resolve(import.meta.dirname, "../app");
 const publicDir = resolve(import.meta.dirname, "../public");
-const metadataFiles = ["layout.tsx", "underwater/page.tsx", "portraits/page.tsx"];
+const metadataFiles = ["layout.tsx", "underwater/page.tsx", "portraits/page.tsx", "climbing/page.tsx"];
 
 function referencedOgImages(file: string): string[] {
 	const source = readFileSync(resolve(appDir, file), "utf8");

@@ -18,44 +18,39 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-family: var(--ff-mono);
+  min-height: 44px;
+  font-family: var(--ff-body);
   font-size: 12px;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink);
   transition: color 200ms;
 }
 .brand:hover { color: var(--accent); }
-.brandMark {
-  display: inline-flex;
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  overflow: hidden;
-  box-shadow: 0 0 0 1px var(--line);
-}
-.brandMark img {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
 .actions {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.links {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .link {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
+  justify-content: center;
+  min-height: 44px;
+  padding: 8px 10px;
   border-radius: 999px;
-  font-family: var(--ff-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  font-family: var(--ff-body);
+  font-size: 12px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--ink-soft);
   border: 1px solid var(--line);
@@ -65,16 +60,22 @@
   color: var(--ink);
   border-color: var(--ink);
 }
+.link[aria-current='page'] {
+  color: var(--ink);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
 
 .cta {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  min-height: 44px;
   padding: 8px 14px;
   border-radius: 999px;
-  font-family: var(--ff-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  font-family: var(--ff-body);
+  font-size: 12px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--accent-ink);
   background: var(--accent);
@@ -89,9 +90,31 @@
 }
 .cta:active { transform: translateY(0); }
 
+@media (max-width: 680px) {
+  .nav {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'brand actions'
+      'links links';
+    gap: 8px 12px;
+  }
+  .brand { grid-area: brand; }
+  .actions { display: contents; }
+  .links {
+    grid-area: links;
+    width: 100%;
+    justify-content: stretch;
+  }
+  .link { flex: 1 1 0; }
+  .cta { grid-area: actions; }
+}
+
 @media (max-width: 480px) {
-  .brandText { display: none; }
-  .cta span { display: none; }
-  .link { padding: 8px 10px; font-size: 10px; }
-  .cta { padding: 8px 10px; }
+  .cta { padding-inline: 10px; }
+}
+
+@media (max-width: 340px) {
+  .nav { padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px)); }
+  .link { padding-inline: 4px; font-size: 11px; }
 }

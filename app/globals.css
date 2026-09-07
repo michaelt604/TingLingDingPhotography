@@ -1,10 +1,7 @@
 /* =========================================================================
    TingLingDing Photography — global styles
    -------------------------------------------------------------------------
-   Theming model:
-     - Side accent: data-side="underwater" | data-side="portrait"
-       (the hub page uses data-half inside [data-side="hub"] for per-half accents)
-     - Site is dark by default; no theme toggle.
+   The shared foundation is neutral near-black, white and cool grey; no theme toggle.
    ========================================================================= */
 
 /* ---------- Reset ---------- */
@@ -42,22 +39,22 @@ html { -webkit-text-size-adjust: 100%; }
 /* ---------- Base body (dark only) ---------- */
 :root {
   /* color tokens */
-  --bg:         #07111a;
-  --bg-2:       #0e2030;
-  --bg-3:       #163048;
-  --bg-glass:   rgba(7, 17, 26, 0.7);
-  --ink:        #f3f7f8;
-  --ink-soft:   rgba(243, 247, 248, 0.74);
-  --ink-mute:   rgba(243, 247, 248, 0.48);
-  --ink-dim:    rgba(243, 247, 248, 0.28);
-  --line:       rgba(243, 247, 248, 0.12);
-  --line-soft:  rgba(243, 247, 248, 0.06);
+  --bg:         #111214;
+  --bg-2:       #1b1d20;
+  --bg-3:       #272a2e;
+  --bg-glass:   rgba(17, 18, 20, 0.78);
+  --ink:        #f2f3f4;
+  --ink-soft:   rgba(242, 243, 244, 0.74);
+  --ink-mute:   rgba(242, 243, 244, 0.54);
+  --ink-dim:    rgba(242, 243, 244, 0.3);
+  --line:       rgba(242, 243, 244, 0.15);
+  --line-soft:  rgba(242, 243, 244, 0.07);
   --shadow:     0 18px 50px -20px rgba(0, 0, 0, 0.65);
-  --accent:     #3eb8af;
-  --accent-2:   #79e8e0;
-  --accent-ink: #06151c;
+  --accent:     #c6ccd3;
+  --accent-2:   #f2f3f4;
+  --accent-ink: #101214;
 
-  /* default font stacks (side variants override) */
+  /* default font stacks shared across the collection pages */
   --ff-display: var(--font-dm-serif), Georgia, serif;
   --ff-serif:   var(--font-dm-serif), Georgia, serif;
   --ff-body:    var(--font-outfit), system-ui, -apple-system, sans-serif;
@@ -78,40 +75,6 @@ body {
   overflow-x: hidden;
 }
 img { color: transparent; }
-
-/* =========================================================================
-   SIDE — Underwater (cyan / aqua accent)
-   ========================================================================= */
-[data-side="underwater"] {
-  --accent:     #3eb8af;
-  --accent-2:   #79e8e0;
-  --accent-ink: #06151c;
-}
-
-/* =========================================================================
-   SIDE — Portrait (purple / lavender accent)
-   ========================================================================= */
-[data-side="portrait"] {
-  --accent:     #a478d0;
-  --accent-2:   #d0a8ee;
-  --accent-ink: #1a0a2e;
-}
-
-/* =========================================================================
-   HUB — split-screen, both accents present
-   The hub page has its own data-side="hub" and each panel uses
-   data-half to scope the accent.
-   ========================================================================= */
-[data-side="hub"] [data-half="underwater"] {
-  --accent: #3eb8af;
-  --accent-2: #79e8e0;
-  --accent-ink: #06151c;
-}
-[data-side="hub"] [data-half="portrait"] {
-  --accent: #a478d0;
-  --accent-2: #d0a8ee;
-  --accent-ink: #1a0a2e;
-}
 
 /* ---------- Type helpers ---------- */
 .display {

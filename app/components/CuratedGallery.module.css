@@ -1,0 +1,275 @@
+.gallery {
+	padding-block: clamp(28px, 6vw, 72px) clamp(72px, 11vw, 140px);
+}
+
+.heading {
+	margin-bottom: clamp(22px, 4vw, 42px);
+	color: var(--ink);
+	font-family: var(--ff-serif);
+	font-size: clamp(30px, 4vw, 48px);
+	font-weight: 400;
+	letter-spacing: -0.025em;
+	line-height: 1;
+}
+
+.grid {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: clamp(10px, 2vw, 24px);
+	align-items: start;
+}
+
+.tile {
+	min-width: 0;
+}
+
+@keyframes galleryReveal {
+	from {
+		opacity: 0.3;
+		transform: translateY(14px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+/* Scroll-linked reveal is an enhancement: browsers without view timelines
+   keep photographs fully visible. */
+@supports (animation-timeline: view()) {
+	@media (prefers-reduced-motion: no-preference) {
+		.tile {
+			animation: galleryReveal linear both;
+			animation-timeline: view();
+			animation-range: entry 0% cover 30%;
+			animation-delay: 0ms;
+		}
+
+		.tile:nth-child(2) { animation-range: entry 4% cover 34%; }
+		.tile:nth-child(3) { animation-range: entry 8% cover 38%; }
+		.tile:nth-child(4) { animation-range: entry 12% cover 42%; }
+		.tile:nth-child(5) { animation-range: entry 16% cover 46%; }
+	}
+}
+
+.featuredLandscape {
+	grid-column: span 2;
+}
+
+.imageButton {
+	position: relative;
+	display: block;
+	width: 100%;
+	padding: 0;
+	background: var(--bg-2);
+	text-align: left;
+	transition: background 180ms ease;
+}
+
+.imageButton:hover,
+.imageButton:focus-visible {
+	background: var(--bg-3);
+}
+
+.image {
+	display: block;
+	width: 100%;
+	height: auto;
+	transition: filter 220ms ease, transform 500ms ease;
+}
+
+.imageButton:hover .image,
+.imageButton:focus-visible .image {
+	filter: brightness(1.08);
+	transform: scale(1.012);
+}
+
+.imageError {
+	position: absolute;
+	inset: 50% auto auto 50%;
+	transform: translate(-50%, -50%);
+	padding: 8px 10px;
+	background: rgba(17, 18, 20, 0.78);
+	color: var(--ink);
+	font-family: var(--ff-mono);
+	font-size: 10px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.viewer {
+	position: fixed;
+	z-index: 200;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	padding: calc(20px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
+	background: rgba(10, 11, 12, 0.93);
+}
+
+.viewerContent {
+	position: relative;
+	display: grid;
+	grid-template-columns: minmax(44px, 1fr) minmax(0, min(84vw, 1200px)) minmax(44px, 1fr);
+	align-items: center;
+	gap: clamp(6px, 2vw, 24px);
+	width: min(100%, 1320px);
+	max-height: 100%;
+}
+
+.viewerImageWrap {
+	position: relative;
+	display: grid;
+	place-items: center;
+	max-height: calc(100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+	min-width: 0;
+	touch-action: pan-y pinch-zoom;
+}
+
+.viewerImage {
+	display: block;
+	width: auto;
+	max-width: 100%;
+	height: auto;
+	max-height: calc(100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+	object-fit: contain;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+	.viewerImage {
+		animation: viewerImageReveal 300ms ease-out both;
+	}
+}
+
+@keyframes viewerImageReveal {
+	from {
+		opacity: 0.72;
+		transform: translateY(6px) scale(0.992);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+.close,
+.arrow {
+	position: absolute;
+	z-index: 1;
+	display: grid;
+	place-items: center;
+	width: 46px;
+	height: 46px;
+	border: 1px solid rgba(242, 243, 244, 0.3);
+	border-radius: 999px;
+	background: rgba(17, 18, 20, 0.82);
+	color: var(--ink);
+	font-size: 30px;
+	line-height: 1;
+	transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+.close:hover,
+.close:focus-visible,
+.arrow:hover:not([aria-disabled="true"]),
+.arrow:focus-visible:not([aria-disabled="true"]) {
+	border-color: var(--accent-2);
+	background: var(--accent);
+	color: var(--accent-ink);
+}
+
+.close {
+	top: calc(-8px - env(safe-area-inset-top, 0px));
+	right: calc(-8px - env(safe-area-inset-right, 0px));
+}
+
+.arrow {
+	position: relative;
+	width: 52px;
+	height: 52px;
+	font-size: 38px;
+}
+
+.arrow[aria-disabled="true"] {
+	cursor: default;
+	opacity: 0.3;
+}
+
+.viewerStatus {
+	position: absolute;
+	right: 10px;
+	bottom: 10px;
+	padding: 4px 7px;
+	border-radius: 999px;
+	background: rgba(17, 18, 20, 0.76);
+	color: var(--ink-soft);
+	font-family: var(--ff-mono);
+	font-size: 10px;
+	letter-spacing: 0.08em;
+}
+
+.viewerError {
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	transform: translate(-50%, -50%);
+	padding: 10px 12px;
+	background: rgba(17, 18, 20, 0.84);
+	color: var(--ink);
+	font-family: var(--ff-mono);
+	font-size: 10px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+@media (max-width: 620px) {
+	.gallery {
+		padding-top: 22px;
+	}
+
+	.grid {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 12px;
+	}
+
+	.featuredLandscape {
+		grid-column: auto;
+	}
+
+	.viewer {
+		padding-inline: calc(8px + env(safe-area-inset-left, 0px)) calc(8px + env(safe-area-inset-right, 0px));
+	}
+
+	.viewerContent {
+		grid-template-columns: 1fr 1fr;
+		gap: 18px 12px;
+		width: 100%;
+	}
+
+	.viewerImageWrap {
+		grid-column: 1 / -1;
+		grid-row: 1;
+	}
+
+	.previous { justify-self: end; }
+	.next { justify-self: start; }
+
+	.viewerImage {
+		max-height: calc(100dvh - 180px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+	}
+
+	.close {
+		position: fixed;
+		top: calc(12px + env(safe-area-inset-top, 0px));
+		right: calc(12px + env(safe-area-inset-right, 0px));
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.image,
+	.imageButton,
+	.close,
+	.arrow {
+		transition: none;
+	}
+}

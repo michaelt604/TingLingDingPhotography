@@ -2,11 +2,11 @@
   "name": "TingLingDing Photography",
   "id": "/",
   "short_name": "TingLingDing",
-  "description": "Underwater, nature, and portrait photography.",
+  "description": "Underwater, portrait, and climbing photography.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#07111a",
-  "theme_color": "#07111a",
+  "background_color": "#111214",
+  "theme_color": "#111214",
   "icons": [
     {
       "src": "/brand-mark-v2.svg",

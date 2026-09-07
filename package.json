@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Personal photography site — split-screen hub with an underwater/cinematic side and a portrait/minimal side. Static export, deployed to Cloudflare Pages.",
+  "description": "Underwater, portrait, and climbing photography portfolio. Static export, deployed to Cloudflare Pages.",
   "workspaces": [
     "workers/ig-proxy"
   ],
@@ -20,6 +20,8 @@
     "start": "next start",
     "lint": "biome lint app tests workers/ig-proxy/src workers/ig-proxy/test next.config.mjs",
     "test": "node --test tests/*.test.ts workers/ig-proxy/test/*.test.ts",
+    "test:homepage-smoke": "node tests/homepage-smoke.mjs",
+    "test:gallery-smoke": "node tests/curated-gallery-smoke.mjs",
     "test:lightbox-smoke": "node tests/lightbox-smoke.mjs",
     "test:embed-smoke": "node tests/instagram-embed-smoke.mjs",
     "test:lightbox-fade": "node tests/lightbox-fade-audit.mjs",

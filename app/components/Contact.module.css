@@ -56,6 +56,9 @@
 
 .label {
   color: var(--ink-mute);
+  font-family: var(--ff-body);
+  font-size: 12px;
+  letter-spacing: 0.08em;
 }
 
 .input {
@@ -87,10 +90,22 @@ textarea.input { min-height: 140px; }
   margin-top: 8px;
 }
 
+.submit {
+  font-family: var(--ff-body);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
 .direct {
-  font-family: var(--ff-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  align-content: center;
+  min-height: 44px;
+  font-family: var(--ff-body);
+  font-size: 12px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-mute);
   transition: color 200ms;

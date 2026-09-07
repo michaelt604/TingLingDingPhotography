@@ -1,8 +1,20 @@
 # TingLingDing Photography
 
-Personal photography site for **TingLingDing** — a split-screen home with two
-distinct sides and an Instagram feed on each. Built with **Next.js 15**,
+Personal photography portfolio for **TingLingDing** — Underwater, Portraits,
+and Climbing, with curated galleries and secondary Instagram recent work. Built with **Next.js 15**,
 exported as a fully static site, and deployed to **Cloudflare Pages**.
+
+## Curated portfolio
+
+The redesigned portfolio uses labelled placeholder artwork until selected photographs
+are supplied. Collection order and image dimensions live in `app/collections.ts`.
+Photo uploading and storage are deferred; climbing does not need Instagram.
+Contact opens the visitor's email app for collaborations or getting in touch.
+
+After building, run `npm run test:homepage-smoke` and `npm run test:gallery-smoke`
+alongside the existing Instagram browser checks. Run browser scripts sequentially
+because some existing scripts share a port. Screenshots and logs are local under
+`preview/redesign/`. See `REDESIGN_PLAN.md` for decisions and the resume checkpoint.
 
 ---
 
@@ -64,18 +76,20 @@ The browser checks require a completed `npm run build` and Python 3 on `PATH`.
 .
 ├── app/                        # Next.js App Router
 │   ├── layout.tsx              # Root layout, fonts, metadata
-│   ├── globals.css             # Design tokens (dark + per-side accents)
-│   ├── page.tsx                # The split-screen hub
+│   ├── globals.css             # Shared neutral dark design tokens
+│   ├── page.tsx                # The three-collection homepage
 │   ├── page.module.css
-│   ├── underwater/             # Underwater & nature side
+│   ├── underwater/             # Underwater collection
 │   │   ├── layout.tsx          # sets data-side="underwater"
 │   │   └── page.tsx
 │   ├── portraits/              # Portraits side
 │   │   ├── layout.tsx          # sets data-side="portrait"
 │   │   └── page.tsx
+│   ├── climbing/               # Independent curated climbing collection
+│   ├── collections.ts          # Curated image order, dimensions and alt text
 │   ├── not-found.tsx             # Themed 404 route
 │   └── components/
-│       ├── SiteNav.tsx           # Top nav for the two side pages
+│       ├── SiteNav.tsx           # Three-collection navigation
 │       ├── InstagramFeed.tsx     # Worker-proxied feed (native carousels
 │       │                         #   with embed fallback for partner-owned posts)
 │       ├── instagramData.ts      # Feed payload validation / normalization
@@ -83,7 +97,8 @@ The browser checks require a completed `npm run build` and Python 3 on `PATH`.
 │       ├── instagramFeedState.ts # Placeholder / pagination display state
 │       ├── instagramImageUrl.ts  # /img resize URL rewriting
 │       ├── instagramEmbed.ts     # Official IG embed URL builder
-│       ├── Contact.tsx           # mailto: inquiry form (portraits only)
+│       ├── CuratedGallery.tsx    # Curated grid and accessible photograph viewer
+│       ├── Contact.tsx           # mailto: form available across the site
 │       ├── ContactProvider.tsx / ContactModal.tsx # Modal dialog + context
 │       ├── contactMailto.ts      # mailto: href builder
 │       └── Footer.tsx
@@ -107,16 +122,9 @@ The browser checks require a completed `npm run build` and Python 3 on `PATH`.
 
 ## Design system
 
-Two aesthetic axes, no theme toggle:
-
-- **Side accent** — set per page via `data-side="underwater"` or
-  `data-side="portrait"` (in each page's `layout.tsx`). Controls the accent
-  color (cyan vs. lavender/purple); both sides share the DM Serif Display
-  typeface for a more cohesive editorial feel.
-- **Hub split** — the homepage uses `data-side="hub"` and each half sets
-  its own `data-half` for the accent.
-
-The site is dark by default — there is no light mode.
+A shared near-black, white and cool-grey palette uses semantic tokens in `app/globals.css`,
+DM Serif Display headings and Outfit body text. Collections share this foundation.
+Motion respects reduced-motion preferences. A light-mode toggle is deferred.
 
 ---
 
@@ -265,10 +273,9 @@ show. Skip unless you have a very specific "featured post" use case.
 
 ## Swapping the hero images
 
-The side pages currently use their live Instagram feeds as the image surface;
-the gradients in each page layout provide the visual fallback while the feed
-loads. If you later add curated hero photos, place them in `public/photos/` and
-render them from the relevant side page with `next/image`.
+Homepage panels currently reference local labelled placeholders. Curated collection
+images are listed in `app/collections.ts`; keep width, height and alternative text
+accurate when replacing them. The upload/storage workflow is not implemented yet.
 
 ---
 
@@ -332,13 +339,13 @@ Most tweaks live in:
 | What | Where |
 |---|---|
 | IG handle on a side | `app/underwater/page.tsx` / `app/portraits/page.tsx` (constant at the top) |
-| Hero copy | Same files, the `<h1>` inside `heroInner` |
-| Contact email | `app/components/Contact.tsx` (`TO_EMAIL` constant) |
+| Page introductions | Homepage and collection `page.tsx` files |
+| Contact email | `app/components/contactMailto.ts` (`CONTACT_EMAIL` constant) |
 | IG proxy URL | `NEXT_PUBLIC_IG_PROXY_URL` env var — points at your deployed `ig-proxy` Worker |
 | IG secrets (server-side) | Set in Cloudflare Worker via `wrangler secret put` (see Worker setup above) |
-| Accent colors | `app/globals.css` (`[data-side="underwater"]` and `[data-side="portrait"]` blocks) |
-| Side accents and gradients | `app/globals.css` and each side layout (`app/underwater/layout.tsx`, `app/portraits/layout.tsx`) |
-| Hub gradient colors | `app/page.module.css` (`.halfUnderwater .halfBg` and `.halfPortrait .halfBg`) |
+| Shared colours | Semantic tokens in `app/globals.css` |
+| Homepage colours and spacing | `app/page.module.css` |
+| Curated selection | `app/collections.ts` |
 | Fonts | `app/layout.tsx` (`next/font`) + `app/globals.css` (`--ff-display`, `--ff-body`, etc.) |
 | Self-review screenshots | Daemon MCP bridge at `tools/mcp-bridge.cjs` — registered as "playwright" in `~/.mavis/mcp/mcp.json` |
 | Cloudflare Worker | `workers/ig-proxy/` — deploy with `wrangler deploy` after setting secrets |

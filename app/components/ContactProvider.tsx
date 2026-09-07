@@ -26,7 +26,13 @@ const ContactContext = createContext<ContactContextValue | null>(null);
 export function ContactProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
-  const side = pathname.startsWith('/underwater') ? 'underwater' : 'portraits';
+  const side = pathname.startsWith('/underwater')
+    ? 'underwater'
+    : pathname.startsWith('/portraits')
+      ? 'portraits'
+      : pathname.startsWith('/climbing')
+        ? 'climbing'
+        : 'hub';
 
   // Stable identity: ContactModal's [open, onClose] effect re-runs whenever
   // this component re-renders while open, so an inline arrow would re-trigger

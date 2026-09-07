@@ -14,20 +14,21 @@
 .ig {
   display: inline-flex;
   align-items: center;
+  min-height: 44px;
   gap: 8px;
   color: var(--ink-soft);
-  font-family: var(--ff-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  font-family: var(--ff-body);
+  font-size: 12px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   transition: color 200ms;
 }
 .ig:hover { color: var(--accent); }
 
 .copy {
-  font-family: var(--ff-mono);
-  font-size: 11px;
-  letter-spacing: 0.12em;
+  font-family: var(--ff-body);
+  font-size: 12px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ink-mute);
 }

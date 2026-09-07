@@ -10,17 +10,18 @@ export default function NotFound() {
         <h1 className={styles.title}>This page doesn&rsquo;t exist (yet).</h1>
         <p className={styles.subtitle}>
           The link may be old, mistyped, or part of a shot that&rsquo;s still being
-          edited. Head back to the hub or jump straight into one of the two sides.
+          edited. Head home or explore a collection.
         </p>
         <nav className={styles.actions} aria-label="Site sections">
           <Link href="/" className={`${styles.link} ${styles.linkPrimary}`}>
             <span className={styles.linkDot} aria-hidden="true">
               <Image src="/brand-mark-v2.svg" alt="" width={18} height={18} unoptimized />
             </span>
-            <span>Hub</span>
+            <span>Home</span>
           </Link>
           <Link href="/underwater/" className={styles.link}>Underwater</Link>
           <Link href="/portraits/" className={styles.link}>Portraits</Link>
+          <Link href="/climbing/" className={styles.link}>Climbing</Link>
         </nav>
       </div>
     </main>

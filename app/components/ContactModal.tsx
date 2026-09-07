@@ -8,7 +8,7 @@ import styles from './ContactModal.module.css';
 interface Props {
   open: boolean;
   onClose: () => void;
-  side: 'underwater' | 'portraits';
+  side: 'underwater' | 'portraits' | 'climbing' | 'hub';
 }
 
 /**
@@ -104,7 +104,7 @@ export function ContactModal({ open, onClose, side }: Props) {
   return (
     <div
       className={styles.overlay}
-      data-side={side === 'underwater' ? 'underwater' : 'portrait'}
+      data-side={side === 'portraits' ? 'portrait' : side}
       role="presentation"
     >
       <button

@@ -1,20 +1,18 @@
 import styles from './Footer.module.css';
 
 interface Props {
-  /** Which side this footer belongs to. Controls the IG handle and accent. */
-  side?: 'underwater' | 'portraits';
+  /** Which collection this footer belongs to. Instagram details remain optional. */
+  side?: 'underwater' | 'portraits' | 'climbing' | 'hub';
   igHandle?: string;
   igProfileUrl?: string;
 }
 
 /**
  * Footer
- * Renders the IG follow link + copyright for the side pages.
- * The hub doesn't render Footer (no SiteNav means the brand is
- * already in the page itself), so this is only ever used with
- * side === 'underwater' | 'portraits'.
+ * Renders optional Instagram details and a generic copyright line.
+ * Collection pages without a connected account simply omit the Instagram link.
  */
-export function Footer({ side = 'underwater', igHandle, igProfileUrl }: Props) {
+export function Footer({ side, igHandle, igProfileUrl }: Props) {
   // Frozen at build time with `next export`; refreshes on every deploy.
   const year = new Date().getFullYear();
   return (
