@@ -84,3 +84,41 @@
 		margin-top: 20px;
 	}
 }
+
+.recentJump {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  margin-top: 18px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+.recentJump:hover { color: var(--ink); }
+
+@media (min-width: 621px) {
+  .galleryWrap[data-collection="underwater"] :global([data-curated-gallery]) > figure:first-child {
+    grid-column: 1 / -1;
+  }
+  .galleryWrap[data-collection="portraits"] :global([data-curated-gallery]) > figure:first-child {
+    grid-column: 1 / -1;
+    width: min(62%, 620px);
+    justify-self: center;
+    margin-bottom: clamp(24px, 5vw, 64px);
+  }
+  .galleryWrap[data-collection="underwater"] :global([data-curated-gallery]) > figure:nth-child(3),
+  .galleryWrap[data-collection="portraits"] :global([data-curated-gallery]) > figure:nth-child(3) {
+    grid-column: auto;
+  }
+  .galleryWrap[data-collection="climbing"] :global([data-curated-gallery]) {
+    grid-template-columns: 1.15fr 0.85fr;
+  }
+  .galleryWrap[data-collection="climbing"] :global([data-curated-gallery]) > figure:nth-child(2) {
+    margin-top: clamp(40px, 9vw, 120px);
+  }
+}
+@media (max-width: 680px) {
+  .recent { scroll-margin-top: 150px; }
+}

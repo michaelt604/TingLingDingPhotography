@@ -175,3 +175,26 @@ img { color: transparent; }
     transition-duration: 0.001ms !important;
   }
 }
+
+/* A photograph keeps its visual identity as it expands into the viewer. */
+:root[data-photo-transition]::view-transition-group(photo-focus) {
+  animation-duration: 420ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+:root[data-photo-transition]::view-transition-old(root),
+:root[data-photo-transition]::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+@media (prefers-reduced-motion: reduce) {
+  :root[data-photo-transition]::view-transition-group(photo-focus) { animation-duration: 0s; }
+}
+
+/* Same-origin document navigation carries the selected opening photograph.
+   Plain links retain normal navigation, history and modifier-key behavior. */
+@media (min-width: 721px) and (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+  [data-route-image="portraits"] { view-transition-name: route-portraits; }
+  [data-route-image="underwater"] { view-transition-name: route-underwater; }
+  [data-route-image="climbing"] { view-transition-name: route-climbing; }
+  ::view-transition-group(route-portraits),
+  ::view-transition-group(route-underwater),
+  ::view-transition-group(route-climbing) { animation-duration: 650ms; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+}

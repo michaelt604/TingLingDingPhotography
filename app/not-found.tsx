@@ -10,7 +10,7 @@ export default function NotFound() {
         <h1 className={styles.title}>This page doesn&rsquo;t exist (yet).</h1>
         <p className={styles.subtitle}>
           The link may be old, mistyped, or part of a shot that&rsquo;s still being
-          edited. Head home or explore a collection.
+          edited. Head home or browse the photographs.
         </p>
         <nav className={styles.actions} aria-label="Site sections">
           <Link href="/" className={`${styles.link} ${styles.linkPrimary}`}>
@@ -19,8 +19,8 @@ export default function NotFound() {
             </span>
             <span>Home</span>
           </Link>
-          <Link href="/underwater/" className={styles.link}>Underwater</Link>
           <Link href="/portraits/" className={styles.link}>Portraits</Link>
+          <Link href="/underwater/" className={styles.link}>Underwater</Link>
           <Link href="/climbing/" className={styles.link}>Climbing</Link>
         </nav>
       </div>

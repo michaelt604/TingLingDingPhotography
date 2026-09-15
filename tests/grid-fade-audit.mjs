@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
+import net from 'node:net';
 import { chromium } from 'playwright';
 
 const port = 4323;
@@ -35,7 +36,25 @@ const server = spawn(
   { stdio: ['ignore', 'ignore', 'pipe'] },
 );
 server.stderr.on('data', (chunk) => process.stderr.write(`[server] ${chunk}`));
-await delay(800);
+let serverError;
+server.once('error', (error) => { serverError = error; });
+
+async function waitForServer() {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (serverError) throw serverError;
+    if (server.exitCode !== null) throw new Error(`Static preview server exited: ${server.exitCode}`);
+    const ready = await new Promise((resolve) => {
+      const socket = net.connect(port, '127.0.0.1');
+      socket.once('connect', () => { socket.destroy(); resolve(true); });
+      socket.once('error', () => resolve(false));
+    });
+    if (ready) return;
+    await delay(100);
+  }
+  throw new Error(`Static preview server did not become ready at ${site}`);
+}
+
+await waitForServer();
 
 const browser = await chromium.launch();
 
@@ -63,7 +82,10 @@ async function openFixture(reducedMotion = 'no-preference', imageDelays = {}) {
       });
     });
   }
-  await page.goto(`${site}/portraits/`, { waitUntil: 'networkidle' });
+  // Feed is deferred: enter via the #recent-work fragment so the gate arms
+  // immediately, then scroll the section into view before tile asserts.
+  await page.goto(`${site}/portraits/#recent-work`, { waitUntil: 'networkidle' });
+  await page.locator('#recent-work').scrollIntoViewIfNeeded();
   await page.locator('button[aria-label^="View photo"]').waitFor();
   return { context, page };
 }
@@ -219,6 +241,7 @@ try {
   await reduced.context.close();
   console.log('GRID FADE AUDIT PASSED');
 } finally {
-  await browser.close();
-  server.kill();
+  await browser?.close();
+  if (server.exitCode === null) server.kill();
 }
+if (serverError) throw serverError;

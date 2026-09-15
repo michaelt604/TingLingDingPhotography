@@ -9,12 +9,15 @@ exported as a fully static site, and deployed to **Cloudflare Pages**.
 The redesigned portfolio uses labelled placeholder artwork until selected photographs
 are supplied. Collection order and image dimensions live in `app/collections.ts`.
 Photo uploading and storage are deferred; climbing does not need Instagram.
-Contact opens the visitor's email app for collaborations or getting in touch.
+Contact opens the visitor's email app for collaborations or getting in touch —
+no confirmation is sent or stored, and both footers show the direct-email fallback.
 
-After building, run `npm run test:homepage-smoke` and `npm run test:gallery-smoke`
-alongside the existing Instagram browser checks. Run browser scripts sequentially
-because some existing scripts share a port. Screenshots and logs are local under
-`preview/redesign/`. See `REDESIGN_PLAN.md` for decisions and the resume checkpoint.
+After building, run the canonical browser suite `npm run test:browser`
+(homepage → curated-gallery → motion → lightbox → embed → lightbox-fade →
+grid-fade, plus focused contact-draft and instagram-defer regressions).
+`npm run test:cross-browser` covers the small Firefox/WebKit core-flow lane.
+Run browser scripts sequentially because they bind fixed localhost ports.
+Screenshots and logs are local under `preview/redesign/`.
 
 ---
 
@@ -34,7 +37,7 @@ because some existing scripts share a port. Screenshots and logs are local under
 
 ## Local development
 
-Requires Node 22+ (Node 24 is used in CI).
+Requires Node 24 (pinned in CI and `engines`).
 
 ```bash
 # install
@@ -49,8 +52,8 @@ npm run build
 # full quality gate
 npm run check
 
-# preview the production build locally
-npx serve out        # or any static host
+# preview the production build locally (smoke tests serve `out/` themselves)
+python -m http.server 4326 --bind 127.0.0.1 --directory out
 ```
 
 The exported site lives in `./out/` — that's the directory Cloudflare Pages
@@ -59,12 +62,15 @@ deploys.
 ### Testing
 
 ```bash
-npm run check                # lint, unit tests, and typecheck
-npm run test:lightbox-smoke  # Playwright lightbox smoke test
-npm run test:embed-smoke     # Playwright Instagram embed smoke test
-npm run test:lightbox-fade   # Playwright lightbox transition audit
-npm run test:grid-fade-audit # Playwright grid transition audit
+npm run check          # lint, unit tests, and typecheck
+npm run test:browser   # canonical browser suite against ./out (sequential)
+npm run test:cross-browser # Firefox/WebKit core-flow lane (homepage nav, contact, curated viewer)
 ```
+
+Individual lanes (`test:homepage-smoke`, `test:gallery-smoke`,
+`test:motion-smoke`, `test:lightbox-smoke`, `test:embed-smoke`,
+`test:lightbox-fade`, `test:grid-fade-audit`, `test:contact-draft`,
+`test:instagram-defer`) run standalone in the same order.
 
 The browser checks require a completed `npm run build` and Python 3 on `PATH`.
 
@@ -136,29 +142,11 @@ Motion respects reduced-motion preferences. A light-mode toggle is deferred.
 > app, and is CORS-blocked from a static client — so you need a small
 > server-side proxy to bridge it.
 
-You have three options. **Path 2 is the recommended one** — it's
+You have two options. **Path 1 is the recommended one** — it's
 the only one that's free forever, you own the data, and there's no
 subscription.
 
-### Path 1: third-party widget (5 min setup, ongoing cost)
-
-If you don't mind paying ~$10–30/mo for someone else to handle the
-IG connection:
-
-| Service | URL | Notes |
-|---|---|---|
-| **SnapWidget** | https://snapwidget.com | Easiest free tier, just an iframe |
-| **Behold** | https://behold.pictures | Cleaner visual defaults |
-| **Curator.io** | https://curator.io | 1-week trial then paid |
-| **Elfsight** | https://elfsight.com | Lots of widget types |
-| **EmbedSocial** | https://embedsocial.com | Hashtag aggregation |
-| **Juicer** | https://juicer.io | Free, moderation tools |
-
-Sign up, point at the handle, paste their embed into the `feedActive`
-block in `app/components/InstagramFeed.tsx`, pass `feedActive={true}`
-from the page. Done in 5 min, but it's a subscription.
-
-### Path 2: Instagram Graph API + Cloudflare Worker (recommended, ~1-2h one-time, free forever)
+### Path 1: Instagram Graph API + Cloudflare Worker (recommended, ~1-2h one-time, free forever)
 
 This is what's already wired up. The static site calls
 `${NEXT_PUBLIC_IG_PROXY_URL}/underwater` and `/portraits`, and the
@@ -263,7 +251,7 @@ history, logs, GitHub variables, or chat.
 data, no third-party branding, free of trial limits. The 1-2h setup
 is a one-time cost.
 
-### Path 3: oEmbed for individual posts (not a real feed)
+### Path 2: oEmbed for individual posts (not a real feed)
 
 Public, no auth, but only for individual hardcoded posts. You can't
 use it for a feed — you'd have to manually curate which posts to
@@ -271,11 +259,13 @@ show. Skip unless you have a very specific "featured post" use case.
 
 ---
 
-## Swapping the hero images
+## Content prep (owner assets)
 
 Homepage panels currently reference local labelled placeholders. Curated collection
 images are listed in `app/collections.ts`; keep width, height and alternative text
-accurate when replacing them. The upload/storage workflow is not implemented yet.
+accurate when replacing them. The upload/storage workflow is not implemented yet —
+supply final photographs, Open Graph images (`public/og-*.png`), and the contact
+address (`CONTACT_EMAIL` in `app/components/contactMailto.ts`) before launch.
 
 ---
 
@@ -360,11 +350,10 @@ Most tweaks live in:
 - [x] Custom 404 page
 - [x] Non-photographic Open Graph fallback (`public/og-default.png`,
       `og-underwater.png`, `og-portraits.png`) and raster favicon/PWA icons
-- [x] Resize feed images through the ig-proxy `/img` route (KV-cached,
-      Cloudflare Image Resizing); full `next/image` optimization is
-      still off (`unoptimized` in `next.config.mjs`)
-- [ ] Optional: upgrade to SSR with `@cloudflare/next-on-pages` if you
-      ever want a real contact-form backend instead of `mailto:`
+- [ ] Optional: add a real contact-form backend if you ever outgrow `mailto:`
+  (today the dialog opens the visitor's email app — no confirmation is sent
+  or stored — and the shared footer plus homepage footer always show the
+  direct-email fallback)
 
 ## Auto-deploy
 

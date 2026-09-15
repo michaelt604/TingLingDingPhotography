@@ -9,13 +9,16 @@ import styles from '../components/CollectionPage.module.css';
 export const metadata: Metadata = {
 	title: 'Portraits',
 	description:
-		'Portrait photography by TingLingDing. Intimate, considered images made for faces.',
+		'Natural-light portraits by Michael Ting. Outdoor photography celebrating natural beauty, from open landscapes to city streets.',
 	alternates: { canonical: '/portraits/' },
 	openGraph: {
 		type: 'website',
 		siteName: 'TingLingDing Photography',
 		url: '/portraits/',
-		images: [{ url: '/og-portraits.png', width: 1200, height: 630, alt: 'Portrait photography' }],
+		title: 'Portraits',
+		description:
+			'Natural-light portraits by Michael Ting. Outdoor photography celebrating natural beauty, from open landscapes to city streets.',
+		images: [{ url: '/og-portraits.png', width: 1200, height: 630, alt: 'Warm-toned portrait placeholder artwork for the Portraits collection' }],
 	},
 	twitter: { card: 'summary_large_image', images: ['/og-portraits.png'] },
 };
@@ -32,13 +35,14 @@ export default function PortraitsPage() {
 				<header className={styles.intro}>
 					<h1 className={styles.title}>{collection.title}</h1>
 					<p className={styles.description}>
-						Natural-light portraits shaped by trust, presence, and a little room to breathe.
+						Natural light, outdoor spaces, and the person in front of the camera. From open landscapes to city streets, I’m drawn to portraits that feel relaxed and true to the person.
 					</p>
+					<a className={styles.recentJump} href="#recent-work">Latest on Instagram <span aria-hidden="true">↓</span></a>
 				</header>
 				<p className={styles.placeholderNotice} data-placeholder-notice>
 					Placeholder artwork is used while selected photographs are being prepared.
 				</p>
-				<div className={styles.galleryWrap}>
+				<div className={styles.galleryWrap} data-collection="portraits">
 					<CuratedGallery images={collection.images} title={collection.title} />
 				</div>
 				<section id="recent-work" className={styles.recent}>

@@ -117,3 +117,31 @@ textarea.input { min-height: 140px; }
   color: var(--ink-soft);
   font-size: 14px;
 }
+
+.copyRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.copyButton {
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--ff-body);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 200ms, border-color 200ms;
+}
+.copyButton:hover {
+  color: var(--ink);
+  border-color: var(--ink);
+}
+
+.fallback {
+  margin-top: 4px;
+}

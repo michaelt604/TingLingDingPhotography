@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
+import net from 'node:net';
 import { chromium } from "playwright";
 
 const PORT = 4322;
@@ -75,8 +76,25 @@ const server = spawn(
 );
 server.stdout.on("data", () => {});
 server.stderr.on("data", (chunk) => process.stderr.write(`[server] ${chunk}`));
+let serverError;
+server.once("error", (error) => { serverError = error; });
 
-await delay(800);
+async function waitForServer() {
+	for (let attempt = 0; attempt < 100; attempt += 1) {
+		if (serverError) throw serverError;
+		if (server.exitCode !== null) throw new Error(`Static preview server exited: ${server.exitCode}`);
+		const ready = await new Promise((resolve) => {
+			const socket = net.connect(PORT, '127.0.0.1');
+			socket.once('connect', () => { socket.destroy(); resolve(true); });
+			socket.once('error', () => resolve(false));
+		});
+		if (ready) return;
+		await delay(100);
+	}
+	throw new Error(`Static preview server did not become ready at ${SITE}`);
+}
+
+await waitForServer();
 const browser = await chromium.launch();
 
 try {
@@ -124,7 +142,10 @@ try {
 			});
 		});
 
-		await page.goto(`${SITE}/portraits/`, { waitUntil: "load" });
+		// Feed is deferred: enter via the #recent-work fragment so the gate
+		// arms immediately, then scroll the section into view before tile asserts.
+		await page.goto(`${SITE}/portraits/#recent-work`, { waitUntil: "load" });
+		await page.locator("#recent-work").scrollIntoViewIfNeeded();
 		const tile = page.getByRole("button", {
 			name: /View photo: Collaborator carousel/i,
 		});
@@ -208,8 +229,9 @@ try {
 		await context.close();
 	}
 } finally {
-	await browser.close();
-	server.kill();
+	await browser?.close();
+	if (server.exitCode === null) server.kill();
 }
+if (serverError) throw serverError;
 
 console.log("Instagram embed smoke test passed");

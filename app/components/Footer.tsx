@@ -1,3 +1,5 @@
+import Link from 'next/link';
+import { CONTACT_EMAIL } from './contactMailto';
 import styles from './Footer.module.css';
 
 interface Props {
@@ -21,6 +23,22 @@ export function Footer({ side, igHandle, igProfileUrl }: Props) {
       data-side={side === 'portraits' ? 'portrait' : side}
     >
       <div className="container">
+        {side && side !== 'hub' && (
+          <nav className={styles.explore} aria-label="More photography">
+            <p>Keep exploring</p>
+            <div className={styles.exploreLinks}>
+              {[
+                { id: 'portraits', title: 'Portraits' },
+                { id: 'underwater', title: 'Underwater' },
+                { id: 'climbing', title: 'Climbing' },
+              ].filter((item) => item.id !== side).map((item) => (
+                <Link key={item.id} href={`/${item.id}/`}>
+                  {item.title}<span aria-hidden="true">↗</span>
+                </Link>
+              ))}
+            </div>
+          </nav>
+        )}
         <div className={styles.inner}>
           {igHandle && igProfileUrl && (
             <a
@@ -39,6 +57,9 @@ export function Footer({ side, igHandle, igProfileUrl }: Props) {
             </a>
           )}
 
+          <a className={styles.email} href={`mailto:${CONTACT_EMAIL}`}>
+            {CONTACT_EMAIL}
+          </a>
           <p className={styles.copy}>
             © {year} Michael Ting
           </p>

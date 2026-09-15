@@ -1,6 +1,10 @@
 .feed {
 	padding-block: clamp(60px, 10vw, 120px);
 	border-top: 1px solid var(--line);
+	/* Stable hash anchor (#recent-work deep-links target the section via
+	the parent page; #instagram targets this section directly). Keep the
+	landing clear of any sticky header. */
+	scroll-margin-top: 72px;
 	background:
 		radial-gradient(
 			ellipse 48% 38% at 94% 0%,
@@ -8,6 +12,13 @@
 			transparent 74%
 		),
 		var(--bg);
+}
+/* Deferred-load gate sentinel (R07). Invisible and layout-preserving;
+watched by the arming observer with a 600px rootMargin. Renders pre-load
+alongside the header so the anchor and profile link exist before fetch. */
+.deferGate {
+	width: 100%;
+	height: 1px;
 }
 
 .head {

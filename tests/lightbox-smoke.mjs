@@ -12,6 +12,7 @@
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
+import net from 'node:net';
 import assert from 'node:assert/strict';
 
 const PORT = 4321;
@@ -53,8 +54,25 @@ const server = spawn('python',
   { stdio: ['ignore', 'pipe', 'pipe'] });
 server.stdout.on('data', () => {});
 server.stderr.on('data', (chunk) => process.stderr.write(`[server] ${chunk}`));
+let serverError;
+server.once('error', (error) => { serverError = error; });
 
-await delay(800);
+async function waitForServer() {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (serverError) throw serverError;
+    if (server.exitCode !== null) throw new Error(`Static preview server exited: ${server.exitCode}`);
+    const ready = await new Promise((resolve) => {
+      const socket = net.connect(PORT, '127.0.0.1');
+      socket.once('connect', () => { socket.destroy(); resolve(true); });
+      socket.once('error', () => resolve(false));
+    });
+    if (ready) return;
+    await delay(100);
+  }
+  throw new Error(`Static preview server did not become ready at ${SITE}`);
+}
+
+await waitForServer();
 
 const browser = await chromium.launch();
 const results = [];
@@ -76,6 +94,20 @@ async function runViewport(label, vw, vh) {
       body: JSON.stringify(MOCK_JSON),
     });
   });
+  // Mirror the other feed fixtures: local builds may resolve the localhost
+  // proxy override, so intercept it identically (still fully mocked).
+  await page.route('http://127.0.0.1:8788/**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+      body: JSON.stringify(MOCK_JSON),
+    });
+  });
   await page.route(WIDE_URL, async (route) => {
     await route.fulfill({ status: 200, contentType: 'image/svg+xml', body: WIDE_SVG });
   });
@@ -83,7 +115,10 @@ async function runViewport(label, vw, vh) {
     await route.fulfill({ status: 200, contentType: 'image/svg+xml', body: TALL_SVG });
   });
 
-  await page.goto(`${SITE}/portraits/`, { waitUntil: 'load' });
+  // Feed is deferred: enter via the #recent-work fragment so the gate arms
+  // immediately, then scroll the section into view before tile asserts.
+  await page.goto(`${SITE}/portraits/#recent-work`, { waitUntil: 'load' });
+  await page.locator('#recent-work').scrollIntoViewIfNeeded();
   await page.waitForSelector('button[aria-label^="View photo"]', { timeout: 15000 });
   await page.waitForLoadState('networkidle');
 
@@ -187,9 +222,10 @@ try {
   await runViewport('desktop', 1440, 900);
   await runViewport('mobile', 375, 812);
 } finally {
-  await browser.close();
-  server.kill();
+  await browser?.close();
+  if (server.exitCode === null) server.kill();
 }
+if (serverError) throw serverError;
 
 console.log('\n=== RESULTS ===');
 for (const r of results) {

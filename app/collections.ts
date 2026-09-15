@@ -6,15 +6,37 @@ export interface CollectionImage {
 	width: number;
 	height: number;
 	alt: string;
+	/** Focal point as percentages (0-100); used for object-position on cover/grid crops only. */
+	focal?: { x: number; y: number };
+	/** Responsive stubs — honestly placeholder-equal until approved assets exist. */
+	gridSrc?: string;
+	viewerSrc?: string;
 }
 
 export interface CollectionRecord {
 	id: CollectionId;
 	title: string;
+	/** Explicit homepage cover; consumers derive cover = images.find(id === coverId) ?? images[0]. */
+	coverId: string;
 	images: readonly CollectionImage[];
 }
 
+export function getCover(rec: CollectionRecord): CollectionImage {
+	const cover = rec.images.find((image) => image.id === rec.coverId);
+	if (cover !== undefined) return cover;
+	const first = rec.images[0];
+	if (first === undefined) throw new Error(`Collection ${rec.id} has no images`);
+	return first;
+}
+
 const underwaterImages = [
+	{
+		id: 'underwater-02',
+		src: '/placeholders/underwater-landscape.svg',
+		width: 1400,
+		height: 860,
+		alt: 'Abstract underwater-toned landscape placeholder artwork with a soft horizon.',
+	},
 	{
 		id: 'underwater-01',
 		src: '/placeholders/underwater.svg',
@@ -28,13 +50,6 @@ const underwaterImages = [
 		width: 1000,
 		height: 1000,
 		alt: 'Abstract underwater-toned square placeholder artwork with layered arcs.',
-	},
-	{
-		id: 'underwater-02',
-		src: '/placeholders/underwater-landscape.svg',
-		width: 1400,
-		height: 860,
-		alt: 'Abstract underwater-toned landscape placeholder artwork with a soft horizon.',
 	},
 	{
 		id: 'underwater-05',
@@ -132,16 +147,19 @@ export const collections = {
 	underwater: {
 		id: 'underwater',
 		title: 'Underwater',
+		coverId: 'underwater-02',
 		images: underwaterImages,
 	},
 	portraits: {
 		id: 'portraits',
 		title: 'Portraits',
+		coverId: 'portraits-01',
 		images: portraitsImages,
 	},
 	climbing: {
 		id: 'climbing',
 		title: 'Climbing',
+		coverId: 'climbing-01',
 		images: climbingImages,
 	},
 } satisfies Record<CollectionId, CollectionRecord>;

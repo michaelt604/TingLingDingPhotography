@@ -24,33 +24,33 @@
 }
 
 @keyframes galleryReveal {
-	from {
-		opacity: 0.3;
-		transform: translateY(14px);
-	}
-	to {
-		opacity: 1;
-		transform: translateY(0);
-	}
+  from { opacity: 0.65; transform: translateY(28px); clip-path: inset(0 0 18% 0); }
+  to { opacity: 1; transform: translateY(0); clip-path: inset(0); }
 }
-
-/* Scroll-linked reveal is an enhancement: browsers without view timelines
-   keep photographs fully visible. */
+@keyframes galleryRevealFromTop {
+  from { opacity: 0.65; transform: translateY(38px); clip-path: inset(14% 0 0 0); }
+  to { opacity: 1; transform: translateY(0); clip-path: inset(0); }
+}
+@keyframes galleryTouchReveal {
+  from { opacity: 0.7; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+/* The opening photograph participates in page navigation. Later photographs
+   reveal progressively, with a plain visible fallback when timelines are absent. */
 @supports (animation-timeline: view()) {
-	@media (prefers-reduced-motion: no-preference) {
-		.tile {
-			animation: galleryReveal linear both;
-			animation-timeline: view();
-			animation-range: entry 0% cover 30%;
-			animation-delay: 0ms;
-		}
-
-		.tile:nth-child(2) { animation-range: entry 4% cover 34%; }
-		.tile:nth-child(3) { animation-range: entry 8% cover 38%; }
-		.tile:nth-child(4) { animation-range: entry 12% cover 42%; }
-		.tile:nth-child(5) { animation-range: entry 16% cover 46%; }
-	}
+  @media (prefers-reduced-motion: no-preference) {
+    .tile:not(:first-child) .imageButton {
+      animation: galleryTouchReveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 35%;
+    }
+  }
+  @media (min-width: 721px) and (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+    .tile:not(:first-child) .imageButton { animation-name: galleryReveal; }
+    .tile:nth-child(even) .imageButton { animation-name: galleryRevealFromTop; }
+  }
 }
+.tile:focus-within .imageButton { animation: none; clip-path: none; }
 
 .featuredLandscape {
 	grid-column: span 2;
@@ -123,10 +123,14 @@
 	place-items: center;
 	max-height: calc(100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
 	min-width: 0;
-	touch-action: pan-y pinch-zoom;
+	overflow: hidden;
+	touch-action: none;
+	z-index: 0;
 }
 
 .viewerImage {
+	position: relative;
+	z-index: 1;
 	display: block;
 	width: auto;
 	max-width: 100%;
@@ -144,18 +148,17 @@
 @keyframes viewerImageReveal {
 	from {
 		opacity: 0.72;
-		transform: translateY(6px) scale(0.992);
 	}
 	to {
 		opacity: 1;
-		transform: translateY(0) scale(1);
 	}
 }
 
 .close,
-.arrow {
+.arrow,
+.zoomToggle {
 	position: absolute;
-	z-index: 1;
+	z-index: 3;
 	display: grid;
 	place-items: center;
 	width: 46px;
@@ -171,6 +174,8 @@
 
 .close:hover,
 .close:focus-visible,
+.zoomToggle:hover,
+.zoomToggle:focus-visible,
 .arrow:hover:not([aria-disabled="true"]),
 .arrow:focus-visible:not([aria-disabled="true"]) {
 	border-color: var(--accent-2);
@@ -181,6 +186,18 @@
 .close {
 	top: calc(-8px - env(safe-area-inset-top, 0px));
 	right: calc(-8px - env(safe-area-inset-right, 0px));
+}
+
+.zoomToggle {
+	top: calc(-8px - env(safe-area-inset-top, 0px));
+	right: 48px;
+	width: auto;
+	min-width: 96px;
+	white-space: nowrap;
+	padding: 0 14px;
+	font-family: var(--ff-mono);
+	font-size: 12px;
+	letter-spacing: 0.04em;
 }
 
 .arrow {
@@ -197,6 +214,7 @@
 
 .viewerStatus {
 	position: absolute;
+	z-index: 2;
 	right: 10px;
 	bottom: 10px;
 	padding: 4px 7px;
@@ -210,6 +228,7 @@
 
 .viewerError {
 	position: absolute;
+	z-index: 2;
 	left: 50%;
 	top: 50%;
 	transform: translate(-50%, -50%);
@@ -263,13 +282,27 @@
 		top: calc(12px + env(safe-area-inset-top, 0px));
 		right: calc(12px + env(safe-area-inset-right, 0px));
 	}
+
+	.zoomToggle {
+		position: fixed;
+		top: calc(12px + env(safe-area-inset-top, 0px));
+		left: calc(12px + env(safe-area-inset-left, 0px));
+		right: auto;
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {
 	.image,
 	.imageButton,
 	.close,
-	.arrow {
+	.arrow,
+	.zoomToggle {
 		transition: none;
 	}
 }
+
+.viewerImage { cursor: grab; }
+.viewerImage:active { cursor: grabbing; }
+.viewerImageWrap[data-photo-zoom="1"] .viewerImage { cursor: zoom-in; }
+
+.viewer:fullscreen { width: 100%; height: 100%; background: var(--bg); }

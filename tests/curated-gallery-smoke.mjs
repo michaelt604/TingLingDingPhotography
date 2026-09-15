@@ -3,7 +3,8 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
+import net from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 
@@ -11,6 +12,17 @@ const PORT = 4326;
 const SITE = `http://127.0.0.1:${PORT}`;
 const SITE_ORIGIN = new URL(SITE).origin;
 const PROXY_HOST = 'ig-proxy.michaelt604.workers.dev';
+const PROXY_URL = `https://${PROXY_HOST}`;
+// Mirror the deploy.yml production-URL gate: fail fast when the built export
+// does not point at the public proxy (never read .env.local here). The URL
+// is embedded in the JS chunks, so scan those (skipping source maps).
+function assertPublicProxyBuild() {
+  const chunks = readdirSync('out/_next/static/chunks', { recursive: true }).filter((file) => String(file).endsWith('.js'));
+  assert.ok(chunks.length > 0, 'test-build contains JS chunks to validate');
+  const sources = chunks.map((file) => readFileSync(`out/_next/static/chunks/${file}`, 'utf8')).join('\n');
+  assert.ok(!sources.includes('http://127.0.0.1'), 'test-build does not pin a localhost proxy override');
+  assert.ok(sources.includes(PROXY_URL), 'test-build resolves the public Instagram proxy URL');
+}
 const ROUTES = [
   { id: 'underwater', title: 'Underwater', mode: 'empty' },
   { id: 'portraits', title: 'Portraits', mode: 'failure' },
@@ -26,11 +38,12 @@ async function waitForServer() {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (serverError) throw serverError;
     if (server.exitCode !== null) throw new Error(`Static preview server exited: ${server.exitCode}`);
-    try {
-      if ((await fetch(SITE)).ok) return;
-    } catch {
-      // The server is still starting.
-    }
+    const ready = await new Promise((resolve) => {
+      const socket = net.connect(PORT, '127.0.0.1');
+      socket.once('connect', () => { socket.destroy(); resolve(true); });
+      socket.once('error', () => resolve(false));
+    });
+    if (ready) return;
     await delay(100);
   }
   throw new Error(`Static preview server did not become ready at ${SITE}`);
@@ -96,10 +109,30 @@ async function assertGallery(page, route, width) {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${route.id} has no overflow at ${width}px`);
   assert.equal(await gallery.locator('button').count(), 5, `${route.id} has five photograph triggers`);
   for (const [index, button] of (await gallery.locator('button').all()).entries()) {
-    assert.equal(await button.getAttribute('aria-label'), `Open photograph ${index + 1} of 5`);
+    const label = await button.getAttribute('aria-label');
+    assert.ok(label?.startsWith(`Open photograph ${index + 1} of 5`), `Photograph trigger ${index + 1} keeps N-of-5 ordering (got: ${label})`);
   }
   assert.equal(await page.locator(`a[href="/${route.id}/"][aria-current="page"]`).count(), 1, `${route.id} is active in navigation`);
   assert.ok(await page.locator('button[aria-label="Open contact form"], button').filter({ hasText: 'Get in touch' }).count(), `${route.id} has contact`);
+  if (width === 1440) {
+    const grid = await gallery.boundingBox();
+    const first = await gallery.locator('figure').nth(0).boundingBox();
+    const second = await gallery.locator('figure').nth(1).boundingBox();
+    if (route.id === 'underwater') assert.ok(first.width >= grid.width - 1 && first.width > first.height, 'Underwater opens with full-width landscape');
+    if (route.id === 'portraits') assert.ok(first.width < grid.width * 0.7 && Math.abs(first.x + first.width / 2 - grid.x - grid.width / 2) < 2, 'Portrait opener is centered');
+    if (route.id === 'climbing') assert.ok(second.y > first.y + 30 && first.width > second.width, 'Climbing has offset asymmetric opening');
+  }
+  const jump = page.getByRole('link', { name: 'Latest on Instagram' });
+  if (route.id === 'climbing') assert.equal(await jump.count(), 0);
+  else {
+    await jump.click();
+    const header = await page.locator('#recent-work h2').boundingBox();
+    const nav = await page.locator('body > header, header').first().boundingBox();
+    assert.ok(header && nav && header.y >= nav.y + nav.height, 'Recent work heading clears sticky navigation');
+    await page.evaluate(() => scrollTo(0, 0));
+  }
+  const more = page.getByRole('navigation', { name: 'More photography' });
+  assert.deepEqual(await more.locator('a').evaluateAll(links => links.map(link => new URL(link.href).pathname)), ['portraits', 'underwater', 'climbing'].filter(id => id !== route.id).map(id => `/${id}/`));
   return gallery;
 }
 
@@ -134,6 +167,35 @@ async function assertViewer(page, gallery, route, width) {
     await page.screenshot({ path: `preview/redesign/viewer-${route.id}-${width}.png` });
   }
 
+  const zoomIn = viewer.getByRole('button', { name: 'Zoom in', exact: true });
+  await zoomIn.click();
+  await viewer.getByRole('button', { name: 'Reset zoom', exact: true }).waitFor();
+  if (width === 1440) {
+    const beforePan = await image.getAttribute('style');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 20, { steps: 4 });
+    await page.mouse.up();
+    assert.notEqual(await image.getAttribute('style'), beforePan, 'Mouse drag pans zoomed image');
+  }
+  await viewer.getByRole('button', { name: 'Reset zoom', exact: true }).click();
+  await zoomIn.waitFor();
+  if (width === 1440) {
+    await image.dblclick();
+    await viewer.getByRole('button', { name: 'Reset zoom', exact: true }).click();
+  }
+
+  if (width === 1440) {
+    const before = await image.getAttribute('src');
+    await page.keyboard.press('+');
+    await viewer.getByRole('button', { name: 'Reset zoom', exact: true }).waitFor();
+    const panBefore = await image.getAttribute('style');
+    await page.keyboard.press('ArrowDown');
+    assert.equal(await image.getAttribute('src'), before, 'Keyboard pans without switching a zoomed photo');
+    await page.waitForFunction((previous) => document.querySelector('[data-curated-viewer] img').getAttribute('style') !== previous, panBefore);
+    await page.keyboard.press('0');
+    await viewer.getByRole('button', { name: 'Zoom in', exact: true }).waitFor();
+  }
   const firstSrc = await image.getAttribute('src');
   const focusables = viewer.locator('button, a[href], input, textarea, select, [tabindex]:not([tabindex="-1"])');
   const count = await focusables.count();
@@ -182,7 +244,7 @@ async function assertViewer(page, gallery, route, width) {
   await viewer.waitFor();
   await page.mouse.click(2, 2);
   await viewer.waitFor({ state: 'detached' });
-  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'Open photograph 1 of 5');
+  await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label')?.startsWith('Open photograph 1 of 5'));
   assert.ok(await trigger.evaluate((element) => document.activeElement === element), 'Viewer restores trigger focus');
 
   await trigger.click();
@@ -256,11 +318,56 @@ try {
     }
   }
 
+  for (const mode of ['native', 'reduced', 'unsupported']) {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: mode === 'reduced' ? 'reduce' : 'no-preference' });
+    const page = await context.newPage();
+    await page.addInitScript((mode) => {
+      window.__transitionReady = false;
+      window.__transitionCalls = 0;
+      const native = document.startViewTransition?.bind(document);
+      if (mode === 'unsupported') Object.defineProperty(document, 'startViewTransition', { value: undefined });
+      else if (native) document.startViewTransition = (update) => {
+        window.__transitionCalls++;
+        const result = native(update);
+        result.ready.then(() => { window.__transitionReady = true; }).catch(() => {});
+        return result;
+      };
+    }, mode);
+    await installNetworkPolicy(page, 'none');
+    await page.goto(`${SITE}/climbing/`, { waitUntil: 'networkidle' });
+    const trigger = page.getByRole('button', { name: /^Open photograph 1 of 5/ });
+    await trigger.click();
+    const viewer = page.locator('[data-curated-viewer]');
+    await viewer.waitFor();
+    if (mode === 'native') {
+      await page.waitForFunction(() => window.__transitionReady);
+      await page.waitForFunction(() => !document.documentElement.hasAttribute('data-photo-transition'));
+      await viewer.getByRole('button', { name: 'Enter fullscreen', exact: true }).click();
+      await page.waitForFunction(() => document.fullscreenElement?.hasAttribute('data-curated-viewer'));
+      await viewer.getByRole('button', { name: 'Exit fullscreen', exact: true }).waitFor();
+      await page.screenshot({ path: 'preview/redesign/native-fullscreen.png' });
+    } else assert.equal(await page.evaluate(() => window.__transitionCalls), 0, 'Motion fallback bypasses transition API');
+    await viewer.getByRole('button', { name: 'Close photograph viewer', exact: true }).click();
+    await viewer.waitFor({ state: 'detached' });
+    await page.waitForFunction(() => !document.fullscreenElement);
+    await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label')?.startsWith('Open photograph 1 of 5'));
+    await context.close();
+  }
+  console.log('PASS native shared-image transition, fullscreen lifecycle, reduced-motion and unsupported fallback');
+
   const touchContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, reducedMotion: 'reduce' });
   const touchPage = await touchContext.newPage();
+  await touchPage.addInitScript(() => {
+    window.__preloads = [];
+    const NativeImage = window.Image;
+    window.Image = class extends NativeImage {
+      set src(value) { window.__preloads.push(value); super.src = value; }
+      get src() { return super.src; }
+    };
+  });
   await installNetworkPolicy(touchPage, 'empty');
   await touchPage.goto(`${SITE}/climbing/`, { waitUntil: 'networkidle' });
-  await touchPage.getByRole('button', { name: 'Open photograph 1 of 5', exact: true }).tap();
+  await touchPage.getByRole('button', { name: /^Open photograph 1 of 5/ }).tap();
   const touchImage = touchPage.locator('[data-curated-viewer] img');
   await touchImage.waitFor();
   const cdp = await touchContext.newCDPSession(touchPage);
@@ -285,18 +392,51 @@ try {
   await touchPage.waitForFunction((src) => document.querySelector('[data-curated-viewer] img').getAttribute('src') !== src, original);
   await swipe(110, 0);
   await touchPage.waitForFunction((src) => document.querySelector('[data-curated-viewer] img').getAttribute('src') === src, original);
+  const canvas = touchPage.locator('[data-photo-zoom]');
+  await touchImage.tap();
+  await touchImage.tap();
+  await touchPage.waitForFunction(() => Number(document.querySelector('[data-photo-zoom]').dataset.photoZoom) > 1);
+  await touchImage.tap();
+  await touchImage.tap();
+  await touchPage.waitForFunction(() => Number(document.querySelector('[data-photo-zoom]').dataset.photoZoom) === 1);
+  await touchPage.getByRole('button', { name: 'Zoom in', exact: true }).tap();
+  const transformBefore = await touchImage.getAttribute('style');
+  await swipe(60, 15);
+  assert.equal(await touchImage.getAttribute('src'), original, 'Pan while zoomed never navigates');
+  assert.notEqual(await touchImage.getAttribute('style'), transformBefore, 'Zoomed image can pan');
+  await touchPage.getByRole('button', { name: 'Reset zoom', exact: true }).tap();
+  const zoomBounds = await canvas.boundingBox();
+  const cx = zoomBounds.x + zoomBounds.width / 2;
+  const cy = zoomBounds.y + zoomBounds.height / 2;
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: cx - 35, y: cy, id: 1 }, { x: cx + 35, y: cy, id: 2 }] });
+  for (let step = 1; step <= 5; step++) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: cx - 35 - step * 9, y: cy, id: 1 }, { x: cx + 35 + step * 9, y: cy, id: 2 }] });
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  await touchPage.waitForFunction(() => Number(document.querySelector('[data-photo-zoom]').dataset.photoZoom) > 1);
+  assert.ok(Number(await canvas.getAttribute('data-photo-zoom')) <= 3, 'Pinch zoom stays bounded');
+  await touchPage.getByRole('button', { name: 'Next photograph', exact: true }).tap();
+  await touchPage.waitForFunction(() => Number(document.querySelector('[data-photo-zoom]').dataset.photoZoom) === 1);
+  assert.ok((await touchPage.evaluate(() => window.__preloads)).some(src => src.includes('climbing-square.svg')), 'Viewer preloads adjacent image');
   await touchContext.close();
   console.log('PASS real touch swipes, direction threshold and bounds');
 
+  assertPublicProxyBuild();
   for (const routeId of ['underwater', 'portraits']) {
     for (const mode of ['empty', 'failure']) {
       const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
       const page = await context.newPage();
       const requests = await installNetworkPolicy(page, mode);
-      await page.goto(`${SITE}/${routeId}/`, { waitUntil: 'networkidle' });
+      // Feed is deferred: enter via the #recent-work fragment so the gate arms
+      // immediately, then scroll the sentinel into view before expecting traffic.
+      await page.goto(`${SITE}/${routeId}/#recent-work`, { waitUntil: 'networkidle' });
       await waitForGallery(page);
       assert.equal(await page.locator('#recent-work').count(), 1, `${routeId} keeps the Recent work anchor on ${mode}`);
       assert.ok(await page.getByRole('heading', { name: 'Recent work', exact: true }).count(), `${routeId} keeps the Recent work heading on ${mode}`);
+      // Feed is deferred: scroll the section into view so the gate sentinel
+      // (600px rootMargin) arms the fetch before expecting proxy traffic.
+      await page.locator('#recent-work').scrollIntoViewIfNeeded();
+      for (let poll = 0; poll < 100 && requests.proxy.length === 0; poll += 1) await delay(100);
       await assertContact(page, { id: routeId });
       assert.ok(requests.proxy.length > 0, `${routeId} uses the mocked production proxy on ${mode}`);
       assert.ok(await page.getByText('Instagram photos are unavailable right now.', { exact: true }).isVisible(), 'Feed unavailable message visible');
@@ -312,7 +452,7 @@ try {
   await installNetworkPolicy(failedImagePage, 'none');
   await failedImagePage.route('**/placeholders/climbing.svg', (route) => route.abort());
   await failedImagePage.goto(`${SITE}/climbing/`, { waitUntil: 'networkidle' });
-  await failedImagePage.getByRole('button', { name: 'Open photograph 1 of 5', exact: true }).click();
+  await failedImagePage.getByRole('button', { name: /^Open photograph 1 of 5/ }).click();
   const failedViewer = failedImagePage.locator('[data-curated-viewer]');
   await failedViewer.getByText('Image unavailable', { exact: true }).waitFor();
   await failedViewer.getByRole('button', { name: 'Next photograph', exact: true }).click();

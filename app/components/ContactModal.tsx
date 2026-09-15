@@ -1,8 +1,11 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Contact } from './Contact';
 import { lockBodyScroll } from './bodyScrollLock';
+import { useContact } from './ContactProvider';
+import { useDialogIsolation } from './dialogIsolation';
 import styles from './ContactModal.module.css';
 
 interface Props {
@@ -13,12 +16,19 @@ interface Props {
 
 /**
  * ContactModal
- * Renders the Contact form inside a dialog. Triggered by the
- * "Get in touch" pill in the header (see ContactProvider).
+ * Renders the controlled Contact form inside a dialog. Triggered by the
+ * "Get in touch" pill in the header (see ContactProvider). The draft lives
+ * in ContactProvider and is passed through, so the text survives Esc / X /
+ * backdrop close and SPA navigation, starts empty on reload, and is never
+ * cleared when the mailto link opens.
+ *
+ * Rendered via portal into #dialog-host (a sibling of #app-content, see
+ * root layout), so the useDialogIsolation call below can mark #app-content
+ * inert while this stays interactive.
  *
  * Accessibility:
  *  - Closes on backdrop click, X button, or ESC
- *  - Locks body scroll while open
+ *  - Locks body scroll while open (ref-counted, safe with stacked dialogs)
  *  - Focuses the first form input on open
  *  - Traps Tab within the dialog
  *  - Returns focus to the trigger element on close
@@ -27,6 +37,19 @@ interface Props {
 export function ContactModal({ open, onClose, side }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  const { draft, setDraft } = useContact();
+
+  useEffect(() => {
+    setHost(document.getElementById('dialog-host'));
+  }, []);
+
+  // Keep #app-content inert while open. Declared BEFORE the focus effect
+  // below on purpose: same-component cleanups run in declaration order, so
+  // inert is removed before the focus-restore cleanup runs. (When this lived
+  // in the provider, the child's restore ran first and focus() into the
+  // still-inert subtree was a silent no-op.)
+  useDialogIsolation(open);
 
   useEffect(() => {
     if (!open) return;
@@ -94,14 +117,18 @@ export function ContactModal({ open, onClose, side }: Props) {
     return () => {
       unlockBody();
       window.removeEventListener('keydown', onKey);
-      // Restore focus to whatever opened the modal
-      previouslyFocusedRef.current?.focus();
+      // Restore focus to the trigger. Inert on #app-content is already
+      // removed by the isolation cleanup above, so this lands. No-ops when
+      // the trigger is gone (route change while open).
+      const trigger = previouslyFocusedRef.current;
+      previouslyFocusedRef.current = null;
+      if (trigger && trigger.isConnected) trigger.focus();
     };
   }, [open, onClose]);
 
   if (!open) return null;
 
-  return (
+  const node = (
     <div
       className={styles.overlay}
       data-side={side === 'portraits' ? 'portrait' : side}
@@ -137,9 +164,13 @@ export function ContactModal({ open, onClose, side }: Props) {
         <Contact
           heading="Get in touch"
           headingId="contact-modal-title"
-          side={side}
+          draft={draft}
+          onDraftChange={setDraft}
         />
       </div>
     </div>
   );
+
+  if (host) return createPortal(node, host);
+  return node;
 }

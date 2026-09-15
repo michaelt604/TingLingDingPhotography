@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { createPortal } from "react-dom";
 import {
 	type MouseEvent,
 	type PointerEvent,
@@ -22,6 +23,7 @@ import { getInstagramFeedDisplayState } from "./instagramFeedState";
 import { buildOptimizedImageUrl } from "./instagramImageUrl";
 import { fetchWithTimeout } from "./instagramFetch";
 import { lockBodyScroll } from "./bodyScrollLock";
+import { useDialogIsolation } from "./dialogIsolation";
 
 interface Props {
 	/** IG handle without the @ */
@@ -132,14 +134,30 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 	// "setState on unmounted" warning and we'd briefly leak the late
 	// page into the wrong lifecycle's grid.
 	const lifecycleTokenRef = useRef(0);
-
-	// Initial-fetch entry point. Re-used by the mount/`side`/`proxyUrl`
-	// effect AND by the initial-load Retry button so both paths funnel
-	// through the same lifecycle guards: bumping the token invalidates
-	// any in-flight response, resetting the state prevents a previous
-	// failure from leaking into the new attempt, and the `cancelled`
-	// closure short-circuits setters if the effect cleanup runs while
-	// the request is still pending.
+	// Deferred initial load (R07). The first fetch is gated behind viewport
+	// proximity: a gate sentinel near the section arms the fetch when it
+	// comes within 600px, or immediately for #recent-work/#instagram
+	// deep-links. FeedHeader (title + profile link) renders pre-load so
+	// the anchor and follow link exist before any network request.
+	// `gateFiredRef` guards double-fire (StrictMode remount / observer
+	// re-attach); fallback arms immediately when IntersectionObserver is
+	// unavailable. Cancellation/dedup/pagination/retry/unmount behavior
+	// below is unchanged — only the trigger is deferred.
+	const [feedArmed, setFeedArmed] = useState(false);
+	const gateRef = useRef<HTMLDivElement | null>(null);
+	const gateFiredRef = useRef(false);
+	const armFeed = useCallback(() => {
+		if (gateFiredRef.current) return;
+		gateFiredRef.current = true;
+		setFeedArmed(true);
+	}, []);
+	// Initial-fetch entry point. Re-used by the gate effect AND by the
+	// initial-load Retry button so both paths funnel through the same
+	// lifecycle guards: bumping the token invalidates any in-flight
+	// response, resetting the state prevents a previous failure from
+	// leaking into the new attempt, and the `cancelled` closure
+	// short-circuits setters if the effect cleanup runs while the request
+	// is still pending.
 	const runInitialFetch = useCallback(() => {
 		if (!proxyUrl) return;
 		const token = ++lifecycleTokenRef.current;
@@ -173,17 +191,51 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 			.finally(() => {
 				if (!cancelled && lifecycleTokenRef.current === token)
 					setHasInitialLoaded(true);
-		});
+			});
 		return () => {
 			cancelled = true;
 			lifecycleTokenRef.current += 1;
 		};
 	}, [proxyUrl, side]);
-
+	// Gate: arm the initial fetch on viewport proximity (600px rootMargin)
+	// or immediately for #recent-work/#instagram deep-links. Falls back to
+	// immediate arming when IntersectionObserver is unavailable (or during
+	// SSR where window is undefined). `armFeed` is single-fire via
+	// gateFiredRef so StrictMode remounts and observer re-attaches never
+	// double-fire.
 	useEffect(() => {
+		if (typeof window === "undefined") return;
+		const hash = window.location?.hash;
+		if (hash === "#recent-work" || hash === "#instagram") {
+			armFeed();
+			return;
+		}
+		if (typeof IntersectionObserver === "undefined") {
+			armFeed();
+			return;
+		}
+		const node = gateRef.current;
+		if (!node) {
+			armFeed();
+			return;
+		}
+		const observer = new IntersectionObserver(
+			(entries) => {
+				if (entries.some((entry) => entry.isIntersecting)) {
+					armFeed();
+				}
+			},
+			{ rootMargin: "600px 0px" },
+		);
+		observer.observe(node);
+		return () => {
+			observer.disconnect();
+		};
+	}, [armFeed]);
+	useEffect(() => {
+		if (!feedArmed) return;
 		return runInitialFetch();
-	}, [runInitialFetch]);
-
+	}, [feedArmed, runInitialFetch]);
 	// Initial-load Retry. User-driven only — re-runs the same lifecycle
 	// path (token bump + state reset + fetch) so a failed initial
 	// request can be retried without touching the side/proxyUrl state.
@@ -340,7 +392,16 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 		>
 			<div className="container">
 				<FeedHeader handle={handle} profileUrl={profileUrl} side={side} />
-
+				{/* Deferred-load gate (R07). Watched by the arming observer with
+				a 600px rootMargin; renders pre-load alongside the header so the
+				anchor and profile link exist before any fetch fires. */}
+				{!feedArmed ? (
+					<div
+						ref={gateRef}
+						className={styles.deferGate}
+						aria-hidden="true"
+					/>
+				) : null}
 				{showRealPosts ? (
 					<>
 						<link
@@ -349,13 +410,12 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 							crossOrigin="anonymous"
 						/>
 						<div className={styles.grid}>
-							{posts.map((post, index) => (
+							{posts.map((post) => (
 								<PostTile
 									key={post.id}
 									post={post}
 									handle={handle}
 									proxyUrl={proxyUrl}
-									priority={index === 0}
 								/>
 							))}
 						</div>
@@ -375,7 +435,10 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 							{loadMoreError ? (
 								<div className={styles.retryBlock}>
 									<p className={styles.retryError} role="alert">
-										Couldn&apos;t load more posts. {loadMoreError}
+										Couldn&apos;t load more posts. Please try again.
+										{process.env.NODE_ENV !== "production" && loadMoreError
+											? ` (${loadMoreError})`
+											: ""}
 									</p>
 									<button
 										type="button"
@@ -402,7 +465,7 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 							)}
 						</div>
 					</>
-				) : !hasInitialLoaded && proxyUrl ? (
+				) : !hasInitialLoaded && proxyUrl && feedArmed ? (
 					<div className={styles.initialLoading} role="status" aria-live="polite">
 						<span className={styles.loadingDot} aria-hidden="true" />
 						Loading the latest work…
@@ -449,7 +512,10 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 						{loadMoreError ? (
 							<div className={styles.retryBlock}>
 								<p className={styles.retryError} role="alert">
-									Couldn&apos;t load more posts. {loadMoreError}
+									Couldn&apos;t load more posts. Please try again.
+									{process.env.NODE_ENV !== "production" && loadMoreError
+										? ` (${loadMoreError})`
+										: ""}
 								</p>
 								<button
 									type="button"
@@ -484,8 +550,6 @@ interface PostTileProps {
 	handle: string;
 	/** ig-proxy origin used to build resized /img URLs; undefined disables resizing. */
 	proxyUrl: string | undefined;
-	/** True only for the first visible tile (the likely LCP image). */
-	priority?: boolean;
 }
 
 /**
@@ -507,7 +571,7 @@ const LIGHTBOX_IMAGE_WIDTH = 1600;
  * sitting above it in z-order so a tap on a chevron does not also
  * open the viewer. The Instagram permalink lives ONLY inside the
  */
-function PostTile({ post, handle, proxyUrl, priority = false }: PostTileProps) {
+function PostTile({ post, handle, proxyUrl }: PostTileProps) {
 	const isCarousel = post.media_type === "CAROUSEL_ALBUM";
 	const children =
 		isCarousel && Array.isArray(post.children) ? post.children : null;
@@ -655,7 +719,6 @@ function PostTile({ post, handle, proxyUrl, priority = false }: PostTileProps) {
 				triggerRef={triggerRef}
 				onPointerDown={handlePointerDown}
 				onPointerUp={handlePointerUp}
-				priority={priority}
 			/>
 			{transition ? (
 				// The outgoing image must paint above the live image button for
@@ -687,22 +750,24 @@ function PostTile({ post, handle, proxyUrl, priority = false }: PostTileProps) {
 					onNext={goNext}
 				/>
 			) : null}
-			{lightboxOpen ? (
-				<Lightbox
-					src={displaySrcAt(safeIndex, LIGHTBOX_IMAGE_WIDTH)}
-					fallbackSrc={slideSrcAt(safeIndex)}
-					alt={label}
-					permalink={post.permalink}
-					embedUrl={embedUrl}
-					onClose={closeLightbox}
-					canPrev={canPrev}
-					canNext={canNext}
-					onPrev={goPrev}
-					onNext={goNext}
-					onSwipePrev={goPrev}
-					onSwipeNext={goNext}
-				/>
-			) : null}
+			{/* R06-feed: always mounted so hook order is stable; Lightbox
+			short-circuits to null when closed and portals into #dialog-host
+			when open. Focus-restore on close stays here (trigger owner). */}
+			<Lightbox
+				open={lightboxOpen}
+				src={displaySrcAt(safeIndex, LIGHTBOX_IMAGE_WIDTH)}
+				fallbackSrc={slideSrcAt(safeIndex)}
+				alt={label}
+				permalink={post.permalink}
+				embedUrl={embedUrl}
+				onClose={closeLightbox}
+				canPrev={canPrev}
+				canNext={canNext}
+				onPrev={goPrev}
+				onNext={goNext}
+				onSwipePrev={goPrev}
+				onSwipeNext={goNext}
+			/>
 		</div>
 	);
 }
@@ -793,8 +858,6 @@ interface TileImageButtonProps {
 	triggerRef: RefObject<HTMLButtonElement | null>;
 	onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void;
 	onPointerUp: (event: PointerEvent<HTMLButtonElement>) => void;
-	/** next/image priority; true only for the first tile of the initial grid. */
-	priority?: boolean;
 }
 function TileImageButton({
 	src,
@@ -806,7 +869,6 @@ function TileImageButton({
 	triggerRef,
 	onPointerDown,
 	onPointerUp,
-	priority = false,
 }: TileImageButtonProps) {
 	const [imageErrorSrc, setImageErrorSrc] = useState<string | null>(null);
 	const imageError = imageErrorSrc === src;
@@ -825,7 +887,6 @@ function TileImageButton({
 				alt=""
 				fill
 				sizes="(min-width: 1024px) 30vw, (min-width: 540px) 33vw, 50vw"
-				priority={priority}
 				unoptimized
 				className={`${styles.tileImage}${transitionDirection ? ` ${transitionDirection === 1 ? styles.tileImageEnterNext : styles.tileImageEnterPrev}` : ""}`}
 				onLoad={() => {
@@ -851,6 +912,8 @@ function TileImageButton({
 	);
 }
 interface LightboxProps {
+	/** Open flag; false short-circuits to null (PostTile always mounts). */
+	open: boolean;
 	src: string;
 	/** Raw (unoptimized) URL for the same slide, shown if the resized src fails to load. */
 	fallbackSrc: string;
@@ -867,6 +930,7 @@ interface LightboxProps {
 }
 
 function Lightbox({
+	open,
 	src,
 	fallbackSrc,
 	alt,
@@ -929,16 +993,21 @@ function Lightbox({
 		beginTransition(1);
 		onSwipeNext();
 	}, [beginTransition, onSwipeNext]);
-	// Body-overflow lock while the lightbox is open (prevents the
-	// underlying feed from scrolling under the modal).
+	// R06-feed: while open, #app-content is inert so focus and assistive
+	// tech stay inside the portaled dialog layer. Consumes the shared
+	// dialog contract; trap / Esc / focus-restore / ref-counted scroll
+	// lock below are unchanged.
+	useDialogIsolation(open);
+	// Body-scroll lock while the lightbox is open (prevents the
+	// underlying feed from scrolling under the modal). Gated on `open`
+	// so mounted-but-closed tiles add no locks or listeners.
 	useEffect(() => {
-		// Body-scroll lock while the lightbox is open (prevents the
-		// underlying feed from scrolling under the modal).
+		if (!open) return;
 		return lockBodyScroll();
-	}, []);
-	// Keyboard nav: ArrowLeft / ArrowRight drive the same wrapped
-	// handlers so swipes and key presses share the snapshot path.
+	}, [open]);
+	// Keyboard nav: Escape closes the viewer. Gated on `open` — see above.
 	useEffect(() => {
+		if (!open) return;
 		const handleKey = (event: KeyboardEvent) => {
 			if (event.key === "Escape") {
 				event.stopPropagation();
@@ -948,7 +1017,7 @@ function Lightbox({
 		};
 		document.addEventListener("keydown", handleKey);
 		return () => document.removeEventListener("keydown", handleKey);
-	}, [onClose]);
+	}, [open, onClose]);
 	const handleBackdropClick = useCallback(
 		(event: MouseEvent<HTMLDivElement>) => {
 			if (event.target === event.currentTarget) onClose();
@@ -1033,9 +1102,17 @@ function Lightbox({
 		setTransition(null);
 	}, []);
 	useEffect(() => {
-		closeButtonRef.current?.focus();
-	}, []);
-	return (
+		if (open) closeButtonRef.current?.focus();
+	}, [open]);
+	// Closed tiles render nothing but keep hook order stable (PostTile
+	// always mounts Lightbox). The open dialog portals into #dialog-host,
+	// a sibling of the isolated #app-content; inline fallback for SSR/tests.
+	if (!open) return null;
+	const dialogHost =
+		typeof document === "undefined"
+			? null
+			: document.getElementById("dialog-host");
+	const dialog = (
 		<div
 			className={`${styles.lightbox} ${styles.lightboxOpen}`}
 			role="dialog"
@@ -1165,6 +1242,7 @@ function Lightbox({
 			</div>
 		</div>
 	);
+	return dialogHost ? createPortal(dialog, dialogHost) : dialog;
 }
 
 interface FeedHeaderProps {

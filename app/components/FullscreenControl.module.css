@@ -1,0 +1,4 @@
+.button { position: absolute; top: -8px; right: 174px; z-index: 3; display: grid; place-items: center; width: 46px; height: 46px; border: 1px solid var(--line); border-radius: 50%; background: var(--bg); color: var(--ink); }
+.button:hover { background: var(--accent); color: var(--accent-ink); }
+.error { position: fixed; left: 16px; bottom: 16px; max-width: calc(100% - 32px); padding: 12px; background: var(--bg); color: var(--ink); z-index: 4; }
+@media (max-width: 620px) { .button { position: fixed; top: calc(12px + env(safe-area-inset-top, 0px)); right: calc(70px + env(safe-area-inset-right, 0px)); } }

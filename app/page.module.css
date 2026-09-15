@@ -107,8 +107,8 @@
   .imageFrame { aspect-ratio: 1.05; }
   .collectionMeta { grid-template-columns: minmax(0, 1fr) 20px; column-gap: 10px; padding-top: 14px; }
   .collectionName { font-size: clamp(34px, 10.5vw, 50px); }
-  .about, .recent { grid-template-columns: 1fr; margin-top: 145px; gap: 36px; }
-  .about { margin-top: 130px; }
+  .about, .recent { grid-template-columns: 1fr; margin-top: 5rem; gap: 36px; }
+  .about { margin-top: 5rem; }
   .recent { padding-bottom: 120px; }
   .recentLinks { margin-top: 0; }
   .footer { flex-direction: column; gap: 13px; }
@@ -145,4 +145,26 @@
 @media (prefers-reduced-motion: reduce) {
   .collectionLink:hover .imageFrame img,
   .collectionLink:focus-visible .imageFrame img { transform: none; }
+}
+
+.summary { max-width: 56ch; margin-top: 22px; color: var(--home-muted); font-size: clamp(16px, 1.6vw, 19px); line-height: 1.6; }
+.shortcuts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 24px; min-width: 0; }
+.shortcutLink { min-height: 44px; display: inline-flex; align-items: center; color: var(--home-paper); font-size: 12px; line-height: 1.5; letter-spacing: 0.04em; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: rgba(242, 243, 244, 0.45); overflow-wrap: anywhere; }
+.shortcutLink:hover, .shortcutLink:focus-visible { color: #c6ccd3; text-decoration-color: #c6ccd3; }
+.introCopy p + p { margin-top: 20px; }
+.about { align-items: start; }
+
+/* The panels widen without changing the height of the composition. */
+@media (min-width: 1100px) and (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .collectionGrid { transition: grid-template-columns 700ms cubic-bezier(0.22, 1, 0.36, 1); }
+  .collectionGrid:has(.collection:nth-child(1):hover),
+  .collectionGrid:has(.collection:nth-child(1):focus-within) { grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 0.8fr); }
+  .collectionGrid:has(.collection:nth-child(2):hover),
+  .collectionGrid:has(.collection:nth-child(2):focus-within) { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 0.8fr); }
+  .collectionGrid:has(.collection:nth-child(3):hover),
+  .collectionGrid:has(.collection:nth-child(3):focus-within) { grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 1.4fr); }
+  .imageFrame { height: clamp(420px, 38vw, 560px); aspect-ratio: auto; }
+  .collectionName { font-size: clamp(32px, 3vw, 44px); }
+  .collectionMeta { transition: transform 550ms cubic-bezier(0.22, 1, 0.36, 1) 70ms; min-height: 100px; }
+  .collection:hover .collectionMeta, .collection:focus-within .collectionMeta { transform: translateY(7px); }
 }

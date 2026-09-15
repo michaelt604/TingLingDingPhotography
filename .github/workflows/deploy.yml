@@ -54,15 +54,14 @@ jobs:
             exit 1
           }
 
-      - name: Install Playwright Chromium
-        run: npx --no-install playwright install --with-deps chromium
+      - name: Install Playwright browsers
+        run: npx --no-install playwright install --with-deps chromium firefox webkit
 
       - name: Smoke tests against the static export
-        run: |-
-          node tests/lightbox-smoke.mjs \
-            && node tests/instagram-embed-smoke.mjs \
-            && node tests/lightbox-fade-audit.mjs \
-            && node tests/grid-fade-audit.mjs
+        run: npm run test:browser
+
+      - name: Cross-browser core flow (Firefox, WebKit)
+        run: npm run test:cross-browser
 
       - name: Upload static export
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

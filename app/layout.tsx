@@ -23,7 +23,7 @@ const jetBrainsMono = JetBrains_Mono({
 const siteUrl = 'https://tinglingdingphotography.com';
 const siteName = 'TingLingDing Photography';
 const siteDescription =
-  'TingLingDing — photography across underwater, portraits, and climbing.';
+  'TingLingDing — natural-light portraits, underwater photography, and climbing with friends.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
         url: '/og-default.png',
         width: 1200,
         height: 630,
-        alt: 'TingLingDing Photography — underwater, portraits, and climbing',
+        alt: 'TingLingDing Photography — portraits, underwater, and climbing',
       },
     ],
   },
@@ -92,7 +92,10 @@ export default function RootLayout({
       <body>
         {/* Skip link — visible only when keyboard-focused, jumps past the sticky nav. */}
         <a href="#main" className="skip-link">Skip to main content</a>
-        <ContactProvider>{children}</ContactProvider>
+        <ContactProvider>
+          <div id="app-content">{children}</div>
+          <div id="dialog-host" />
+        </ContactProvider>
       </body>
     </html>
   );

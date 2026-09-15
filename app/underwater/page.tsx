@@ -9,13 +9,16 @@ import styles from '../components/CollectionPage.module.css';
 export const metadata: Metadata = {
 	title: 'Underwater',
 	description:
-		'Underwater photography by TingLingDing. Quiet, considered images from below the surface.',
+		'Underwater photography by Michael Ting. Photographs from his dives, sharing the light, movement, and experiences below the surface.',
 	alternates: { canonical: '/underwater/' },
 	openGraph: {
 		type: 'website',
 		siteName: 'TingLingDing Photography',
 		url: '/underwater/',
-		images: [{ url: '/og-underwater.png', width: 1200, height: 630, alt: 'Underwater photography' }],
+		title: 'Underwater',
+		description:
+			'Underwater photography by Michael Ting. Photographs from his dives, sharing the light, movement, and experiences below the surface.',
+		images: [{ url: '/og-underwater.png', width: 1200, height: 630, alt: 'Underwater-toned seascape placeholder artwork for the Underwater collection' }],
 	},
 	twitter: { card: 'summary_large_image', images: ['/og-underwater.png'] },
 };
@@ -32,13 +35,14 @@ export default function UnderwaterPage() {
 				<header className={styles.intro}>
 					<h1 className={styles.title}>{collection.title}</h1>
 					<p className={styles.description}>
-						A study of depth, movement, and the softened light beneath the surface.
+						Diving is one of my passions. These photographs are a way to share what I see beneath the surface: the changing light, the movement, and the moments I want to bring back with me.
 					</p>
+					<a className={styles.recentJump} href="#recent-work">Latest on Instagram <span aria-hidden="true">↓</span></a>
 				</header>
 				<p className={styles.placeholderNotice} data-placeholder-notice>
 					Placeholder artwork is used while selected photographs are being prepared.
 				</p>
-				<div className={styles.galleryWrap}>
+				<div className={styles.galleryWrap} data-collection="underwater">
 					<CuratedGallery images={collection.images} title={collection.title} />
 				</div>
 				<section id="recent-work" className={styles.recent}>

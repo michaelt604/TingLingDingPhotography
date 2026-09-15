@@ -20,8 +20,8 @@ interface Props {
 export function SiteNav({ current }: Props) {
   const { open: openContact } = useContact();
   const collections: Array<{ key: Collection; label: string; href: string }> = [
-    { key: 'underwater', label: 'Underwater', href: '/underwater/' },
     { key: 'portraits', label: 'Portraits', href: '/portraits/' },
+    { key: 'underwater', label: 'Underwater', href: '/underwater/' },
     { key: 'climbing', label: 'Climbing', href: '/climbing/' },
   ];
 

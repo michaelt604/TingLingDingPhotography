@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
+import net from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from 'playwright';
 
@@ -18,11 +19,12 @@ async function waitForServer() {
   for (let attempt = 0; attempt < 100; attempt += 1) {
     if (serverError) throw serverError;
     if (server.exitCode !== null) throw new Error(`Static preview server exited: ${server.exitCode}`);
-    try {
-      if ((await fetch(SITE)).ok) return;
-    } catch {
-      // The server is still starting.
-    }
+    const ready = await new Promise((resolve) => {
+      const socket = net.connect(PORT, '127.0.0.1');
+      socket.once('connect', () => { socket.destroy(); resolve(true); });
+      socket.once('error', () => resolve(false));
+    });
+    if (ready) return;
     await delay(100);
   }
   throw new Error(`Static preview server did not become ready at ${SITE}`);
@@ -126,3 +128,4 @@ try {
   await browser?.close();
   if (server.exitCode === null) server.kill();
 }
+if (serverError) throw serverError;
