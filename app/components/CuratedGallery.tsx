@@ -1,5 +1,6 @@
 'use client';
 
+import { CaretLeft, CaretRight, X } from '@phosphor-icons/react/dist/ssr';
 import Image from 'next/image';
 import { createPortal, flushSync } from 'react-dom';
 import { FullscreenControl } from './FullscreenControl';
@@ -28,6 +29,7 @@ export function CuratedGallery({ images, title }: CuratedGalleryProps) {
 	const [activeIndex, setActiveIndex] = useState<number | null>(null);
 	const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set());
 	const triggerRef = useRef<HTMLButtonElement | null>(null);
+	const gridRef = useRef<HTMLDivElement>(null);
     const transitionRef = useRef<ViewTransition | null>(null);
     useEffect(() => () => transitionRef.current?.skipTransition(), []);
 
@@ -55,13 +57,33 @@ export function CuratedGallery({ images, title }: CuratedGalleryProps) {
             }
         });
 	}, []);
-	const closeViewer = useCallback(async () => {
+	// Pointer closes morph the photo back into its tile; keyboard and fullscreen closes stay instant.
+	const closeViewer = useCallback(async (instant = false) => {
         transitionRef.current?.skipTransition();
         if (document.fullscreenElement?.hasAttribute('data-curated-viewer')) {
+            instant = true;
             try { await document.exitFullscreen(); } catch { /* Removing the dialog also exits fullscreen. */ }
         }
-		setActiveIndex(null);
-	}, []);
+        const thumbnail = activeIndex === null ? undefined : gridRef.current?.querySelectorAll<HTMLElement>('figure img')[activeIndex];
+        if (instant || !thumbnail || !document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            setActiveIndex(null);
+            return;
+        }
+        document.documentElement.dataset.photoTransition = 'close';
+        const transition = document.startViewTransition(() => {
+            thumbnail.style.viewTransitionName = 'photo-focus';
+            flushSync(() => setActiveIndex(null));
+        });
+        transitionRef.current = transition;
+        void transition.ready.catch(() => {});
+        void transition.finished.catch(() => {}).finally(() => {
+            thumbnail.style.viewTransitionName = '';
+            if (transitionRef.current === transition) {
+                delete document.documentElement.dataset.photoTransition;
+                transitionRef.current = null;
+            }
+        });
+	}, [activeIndex]);
 	const markFailed = useCallback((id: string) => {
 		setFailedIds((previous) => {
 			if (previous.has(id)) return previous;
@@ -76,7 +98,7 @@ export function CuratedGallery({ images, title }: CuratedGalleryProps) {
 			<h2 id="curated-gallery-heading" className={styles.heading}>
 				Selected work
 			</h2>
-			<div className={styles.grid} data-curated-gallery>
+			<div ref={gridRef} className={styles.grid} data-curated-gallery>
 				{images.map((image, index) => {
 					const failed = failedIds.has(image.id);
 					return (
@@ -142,7 +164,7 @@ interface PhotoViewerProps {
 	images: readonly CollectionImage[];
 	title: string;
 	index: number;
-	onClose: () => void;
+	onClose: (instant?: boolean) => void;
 	onIndexChange: (index: number) => void;
 	triggerRef: MutableRefObject<HTMLButtonElement | null>;
 	onImageError: (id: string) => void;
@@ -161,13 +183,13 @@ function PhotoViewer({
 	const closeRef = useRef<HTMLButtonElement | null>(null);
 	const viewerImageWrapRef = useRef<HTMLDivElement | null>(null);
 	const viewerImageRef = useRef<HTMLImageElement | null>(null);
-	const [imageFailed, setImageFailed] = useState(false);
+	const [failedImageId, setFailedImageId] = useState<string | null>(null);
 	const [zoomLevel, setZoomLevel] = useState(1);
 	const [pan, setPan] = useState({ x: 0, y: 0 });
 	const zoomRef = useRef(zoomLevel);
 	const panRef = useRef(pan);
 	const indexRef = useRef(index);
-	const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+	const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 	const touchTrackingRef = useRef(false);
 	const panGestureRef = useRef<{ x: number; y: number; pan: { x: number; y: number }; moved: boolean } | null>(null);
 	const mousePanRef = useRef<{ x: number; y: number; pan: { x: number; y: number } } | null>(null);
@@ -219,7 +241,14 @@ function PhotoViewer({
 		},
 		[clampPan, clampZoom],
 	);
+	// Only the discrete toggle eases; pinch, pan and keys track the input 1:1.
+	const [zoomEasing, setZoomEasing] = useState(false);
+	const zoomEasingTimer = useRef<number | undefined>(undefined);
+	useEffect(() => () => window.clearTimeout(zoomEasingTimer.current), []);
 	const toggleZoom = useCallback(() => {
+		setZoomEasing(true);
+		window.clearTimeout(zoomEasingTimer.current);
+		zoomEasingTimer.current = window.setTimeout(() => setZoomEasing(false), 260);
 		if (zoomRef.current === 1) setZoom(2);
 		else resetZoom();
 	}, [resetZoom, setZoom]);
@@ -244,7 +273,7 @@ function PhotoViewer({
 			if (event.key === 'Escape') {
 				if (document.fullscreenElement === dialogRef.current) return;
 				event.preventDefault();
-				onClose();
+				onClose(true);
 			} else if (event.key === '+' || event.key === '=') {
 				event.preventDefault();
 				setZoom(zoomRef.current + 0.5);
@@ -327,8 +356,20 @@ function PhotoViewer({
 			touchStartRef.current = null;
 			return;
 		}
-		touchStartRef.current = { x: touch.clientX, y: touch.clientY };
+		touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
 		touchTrackingRef.current = false;
+	};
+	// The photo follows a horizontal swipe directly (no re-render per frame) and resists past either end.
+	const setSwipeOffset = (offset: number | null) => {
+		const wrap = viewerImageWrapRef.current;
+		if (!wrap) return;
+		if (offset === null) {
+			delete wrap.dataset.swiping;
+			wrap.style.transform = '';
+			return;
+		}
+		wrap.dataset.swiping = '';
+		wrap.style.transform = `translate3d(${offset}px, 0, 0)`;
 	};
 	const handleTouchMove = (event: ReactTouchEvent<HTMLDivElement>) => {
 		if (event.touches.length === 2 && pinchStartRef.current) {
@@ -367,6 +408,8 @@ function PhotoViewer({
 			return;
 		}
 		touchTrackingRef.current = true;
+		const atEdge = (deltaX > 0 && indexRef.current === 0) || (deltaX < 0 && indexRef.current === images.length - 1);
+		setSwipeOffset(atEdge ? deltaX * 0.35 : deltaX);
 	};
 	const handleTouchEnd = (event: ReactTouchEvent<HTMLDivElement>) => {
 		if (event.touches.length > 0) return;
@@ -409,12 +452,16 @@ function PhotoViewer({
 			return;
 		}
 		touchTrackingRef.current = false;
+		setSwipeOffset(null);
 		const deltaX = touch.clientX - start.x;
-		if (Math.abs(deltaX) < 52) return;
+		// A deliberate quick flick (24px+) counts even when it travels less than the distance threshold.
+		const velocity = Math.abs(deltaX) / Math.max(1, Date.now() - start.time);
+		if (Math.abs(deltaX) < 52 && (Math.abs(deltaX) < 24 || velocity < 0.11)) return;
 		if (deltaX < 0) goNext();
 		else goPrevious();
 	};
 	const handleTouchCancel = () => {
+		setSwipeOffset(null);
 		touchStartRef.current = null;
 		touchTrackingRef.current = false;
 		panGestureRef.current = null;
@@ -452,9 +499,8 @@ function PhotoViewer({
 	const nextNeighbor = images[index + 1];
 	const previousNeighborSrc = previousNeighbor ? pickViewerSrc(previousNeighbor) : undefined;
 	const nextNeighborSrc = nextNeighbor ? pickViewerSrc(nextNeighbor) : undefined;
-	useEffect(() => {
-		if (image) setImageFailed(false);
-	}, [image]);
+	// Failure belongs to one photograph, so navigating away clears it in the same render.
+	const imageFailed = imageId !== undefined && failedImageId === imageId;
 	useEffect(() => {
 		if (!imageId) return;
 		resetZoom();
@@ -501,10 +547,10 @@ function PhotoViewer({
 					ref={closeRef}
 					type="button"
 					className={styles.close}
-					onClick={onClose}
+					onClick={() => onClose()}
 					aria-label="Close photograph viewer"
 				>
-					<span aria-hidden="true">×</span>
+					<X size={22} aria-hidden />
 				</button>
 				<button type="button" className={styles.zoomToggle} onClick={toggleZoom} aria-label={zoomLevel === 1 ? 'Zoom in' : 'Reset zoom'}>
 					{zoomLevel === 1 ? 'Zoom in' : 'Reset zoom'}
@@ -516,7 +562,7 @@ function PhotoViewer({
 					aria-disabled={!hasPrevious}
 					aria-label="Previous photograph"
 				>
-					<span aria-hidden="true">‹</span>
+					<CaretLeft size={26} aria-hidden />
 				</button>
 				<div
 					ref={viewerImageWrapRef}
@@ -537,6 +583,7 @@ function PhotoViewer({
 						height={image.height}
 						unoptimized
 						className={styles.viewerImage}
+						data-zoom-easing={zoomEasing ? '' : undefined}
 						style={{ viewTransitionName: 'photo-focus', transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${zoomLevel})` }}
 						onDoubleClick={handleDoubleClick}
 						onMouseDown={handleMouseDown}
@@ -545,7 +592,7 @@ function PhotoViewer({
 						onMouseLeave={handleMouseUp}
 						draggable={false}
 						onError={() => {
-							setImageFailed(true);
+							setFailedImageId(image.id);
 							onImageError(image.id);
 						}}
 					/>
@@ -565,7 +612,7 @@ function PhotoViewer({
 					aria-disabled={!hasNext}
 					aria-label="Next photograph"
 				>
-					<span aria-hidden="true">›</span>
+					<CaretRight size={26} aria-hidden />
 				</button>
 			</div>
 		</div>

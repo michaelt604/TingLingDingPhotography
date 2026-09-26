@@ -2,9 +2,11 @@
 
 import type { PointerEvent } from 'react';
 import Link from 'next/link';
+import { ArrowRight, ArrowUpRight } from '@phosphor-icons/react/dist/ssr';
 import Image from 'next/image';
 import { useContact } from './components/ContactProvider';
 import { CONTACT_EMAIL } from './components/contactMailto';
+import { LatestFrames } from './components/LatestFrames';
 import { collections as records, getCover } from './collections';
 import styles from './page.module.css';
 
@@ -21,6 +23,11 @@ const collectionCards = [
     id: 'climbing' as const, note: 'Friends and days on the wall.', href: '/climbing/',
     className: styles.climbing,
   },
+] as const;
+
+const instagramAccounts = [
+  { handle: 'tinglingdingportraits', label: 'Portraits' },
+  { handle: 'tinglingdingphotography', label: 'Underwater' },
 ] as const;
 
 function movePanel(event: PointerEvent<HTMLDivElement>) {
@@ -46,34 +53,38 @@ export default function HubPage() {
       <header className={styles.header}>
         <Link href="/" className={styles.brand} aria-label="TingLingDing Photography home">
           <span className={styles.brandName}>TingLingDing</span>
-          <span className={styles.brandType}>Photography</span>
+          <span className={styles.brandType}>Michael Ting</span>
         </Link>
+        <nav className={styles.headerNav} aria-label="Sections">
+          <a href="#work">Work</a>
+          <a href="#recent">Recent</a>
+          <a href="#about">About</a>
+        </nav>
         <button type="button" className={styles.contactButton} onClick={openContact}>
-          Get in touch <span aria-hidden="true">↗</span>
+          Get in touch <ArrowUpRight aria-hidden />
         </button>
       </header>
 
       <section className={styles.intro} aria-labelledby="intro-title">
-        <p className={styles.eyebrow}>Selected work</p>
         <h1 id="intro-title" className={`display ${styles.title}`}>
           People, places, and time outside.
         </h1>
-        <p className={styles.summary}>Portraits in natural light, moments below the surface, and days spent climbing with friends.</p>
-        <nav className={styles.shortcuts} aria-label="Collection shortcuts">
-          {collectionCards.map((card) => (
-            <Link key={card.id} href={card.href} className={styles.shortcutLink}>
-              {records[card.id].title}
-            </Link>
-          ))}
-        </nav>
-        <p className={styles.scrollHint} aria-hidden="true">Explore <span>↓</span></p>
+        <div className={styles.introFoot}>
+          <p className={styles.summary}>
+            Portraits in natural light, moments below the surface, and days spent climbing with friends.
+          </p>
+          <nav className={styles.shortcuts} aria-label="Collection shortcuts">
+            {collectionCards.map((card) => (
+              <Link key={card.id} href={card.href} className={styles.shortcutLink}>
+                {records[card.id].title} <ArrowRight aria-hidden />
+              </Link>
+            ))}
+          </nav>
+        </div>
       </section>
 
-      <section className={styles.collections} aria-labelledby="collections-title">
-        <div className={styles.sectionHeading}>
-          <h2 id="collections-title" className="srOnly">Browse photographs</h2>
-        </div>
-
+      <section id="work" className={styles.collections} aria-labelledby="collections-title">
+        <h2 id="collections-title" className="srOnly">Photography collections</h2>
         <div className={styles.collectionGrid}>
           {collectionCards.map((card, cardIndex) => {
             const record = records[card.id];
@@ -98,14 +109,13 @@ export default function HubPage() {
                       priority={cardIndex === 0}
                       loading={cardIndex === 0 ? undefined : 'lazy'}
                     />
-                    <span className={styles.placeholderTag}>Local placeholder · selected work pending</span>
                   </div>
                   <div className={styles.collectionMeta}>
                     <div>
                       <h3 className={`display ${styles.collectionName}`}>{record.title}</h3>
                       <p className={styles.collectionNote}>{card.note}</p>
                     </div>
-                    <span className={styles.arrow} aria-hidden="true">↗</span>
+                    <ArrowUpRight className={styles.arrow} aria-hidden />
                   </div>
                 </a>
               </article>
@@ -114,9 +124,25 @@ export default function HubPage() {
         </div>
       </section>
 
-      <section className={styles.about} aria-labelledby="about-title">
+      <section id="recent" className={styles.recent} aria-labelledby="recent-title">
+        <div className={styles.sectionHead}>
+          <div>
+            <h2 id="recent-title" className={`display ${styles.sectionTitle}`}>Latest frames</h2>
+          </div>
+          <div className={styles.recentLinks}>
+            <Link href="/portraits/#recent-work" className={styles.recentLink}>
+              <span>Portraits feed</span><ArrowRight aria-hidden />
+            </Link>
+            <Link href="/underwater/#recent-work" className={styles.recentLink}>
+              <span>Underwater feed</span><ArrowRight aria-hidden />
+            </Link>
+          </div>
+        </div>
+        <LatestFrames />
+      </section>
+
+      <section id="about" className={styles.about} aria-labelledby="about-title">
         <div>
-          <p className={styles.eyebrow}>Behind the camera</p>
           <h2 id="about-title" className={`display ${styles.aboutTitle}`}>Hi, I’m Michael.</h2>
         </div>
         <div className={styles.introCopy}>
@@ -137,25 +163,23 @@ export default function HubPage() {
         </div>
       </section>
 
-      <section className={styles.recent} aria-labelledby="recent-title">
-        <div>
-          <p className={styles.eyebrow}>From the field</p>
-          <h2 id="recent-title" className={`display ${styles.recentTitle}`}>Recent work</h2>
-        </div>
-        <div className={styles.recentLinks}>
-          <Link href="/portraits/#recent-work" className={styles.recentLink}>
-            <span>Portraits</span><span aria-hidden="true">↗</span>
-          </Link>
-          <Link href="/underwater/#recent-work" className={styles.recentLink}>
-            <span>Underwater</span><span aria-hidden="true">↗</span>
-          </Link>
-        </div>
-      </section>
-
       <footer className={styles.footer}>
-        <p>© {new Date().getFullYear()} Michael Ting</p>
-        <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
-        <button type="button" onClick={openContact}>Have an idea? Get in touch <span aria-hidden="true">↗</span></button>
+        <div className={styles.footerTop}>
+          <button type="button" className={`display ${styles.footerCta}`} onClick={openContact}>
+            Have an idea? Get in touch <ArrowUpRight aria-hidden />
+          </button>
+          <ul className={styles.footerLinks}>
+            <li><a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a></li>
+            {instagramAccounts.map((account) => (
+              <li key={account.handle}>
+                <a href={`https://instagram.com/${account.handle}`} target="_blank" rel="noopener noreferrer">
+                  Instagram · {account.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <p className={styles.copyright}>© {new Date().getFullYear()} Michael Ting</p>
       </footer>
     </main>
   );

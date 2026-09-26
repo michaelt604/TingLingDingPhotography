@@ -1,4 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 1100">
-  <defs><linearGradient id="a" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#4a3a36"/><stop offset=".5" stop-color="#89674e"/><stop offset="1" stop-color="#d0aa82"/></linearGradient><radialGradient id="b" cx=".76" cy=".16" r=".45"><stop stop-color="#f7d8aa" stop-opacity=".68"/><stop offset="1" stop-color="#f7d8aa" stop-opacity="0"/></radialGradient></defs>
-  <rect width="1100" height="1100" fill="url(#a)"/><rect width="1100" height="1100" fill="url(#b)"/><path d="M118 1100c55-248 220-365 435-365s365 117 432 365" fill="#2e2928" fill-opacity=".82"/><ellipse cx="560" cy="410" rx="158" ry="220" fill="#d8b18b" fill-opacity=".72"/><path d="M396 405C382 205 485 116 605 130c141 17 178 143 130 291-24-84-84-117-170-125-70 17-122 54-169 109z" fill="#40332f" fill-opacity=".88"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 1100" role="img" aria-labelledby="p3t p3d">
+<title id="p3t">Portraits collection placeholder</title>
+<desc id="p3d">Abstract tonal placeholder, to be replaced with a selected photograph.</desc>
+<defs>
+<linearGradient id="p3a" x1="0.5" y1="1" x2="0.5" y2="0"><stop offset="0" stop-color="#231b18"/><stop offset="0.55" stop-color="#5e4234"/><stop offset="1" stop-color="#a57b5b"/></linearGradient>
+<radialGradient id="p3b" cx="0.5" cy="0.12" r="0.5"><stop offset="0" stop-color="#f4dcb6" stop-opacity="0.55"/><stop offset="0.35" stop-color="#e0b98e" stop-opacity="0.22"/><stop offset="1" stop-color="#d9a878" stop-opacity="0"/></radialGradient>
+<radialGradient id="p3c" cx="0.5" cy="0.95" r="0.6"><stop offset="0" stop-color="#1b1411" stop-opacity="0.6"/><stop offset="1" stop-color="#1b1411" stop-opacity="0"/></radialGradient>
+<radialGradient id="p3e" cx="0.5" cy="0.12" r=".3"><stop offset="0" stop-color="#fff1d9" stop-opacity="0.2"/><stop offset="1" stop-color="#fff1d9" stop-opacity="0"/></radialGradient>
+<radialGradient id="p3v" cx=".5" cy=".5" r=".75"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/></radialGradient>
+<filter id="p3g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.4 -.35"/></filter>
+</defs>
+<rect width="1100" height="1100" fill="url(#p3a)"/>
+<rect width="1100" height="1100" fill="url(#p3c)"/>
+<rect width="1100" height="1100" fill="url(#p3b)"/>
+<rect width="1100" height="1100" fill="url(#p3e)"/>
+<rect width="1100" height="1100" fill="url(#p3v)"/>
+<rect width="1100" height="1100" filter="url(#p3g)" opacity=".08"/>
 </svg>

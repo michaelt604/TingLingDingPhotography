@@ -1,4 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
-  <defs><linearGradient id="a" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#275b59"/><stop offset="1" stop-color="#102f36"/></linearGradient><linearGradient id="b" x1="0" y1="0" x2="1" y2="0"><stop stop-color="#e0c994" stop-opacity=".45"/><stop offset="1" stop-color="#e0c994" stop-opacity="0"/></linearGradient></defs>
-  <rect width="1600" height="900" fill="url(#a)"/><path d="M0 170C300 40 500 270 820 130s490-74 780 20v170C1280 220 1030 410 750 290S280 350 0 300z" fill="url(#b)"/><path d="M-80 630c270-210 480 150 760-54s520-170 980 12M-80 735c270-210 480 150 760-54s520-170 980 12" fill="none" stroke="#b8d8cf" stroke-opacity=".23" stroke-width="5"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="u4t u4d">
+<title id="u4t">Underwater collection placeholder</title>
+<desc id="u4d">Abstract tonal placeholder, to be replaced with a selected photograph.</desc>
+<defs>
+<linearGradient id="u4a" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2d6c66"/><stop offset="0.45" stop-color="#153f42"/><stop offset="1" stop-color="#061519"/></linearGradient>
+<radialGradient id="u4b" cx="0.62" cy="-.08" r=".7"><stop offset="0" stop-color="#bfe6d6" stop-opacity="0.5"/><stop offset="0.4" stop-color="#6fb0a4" stop-opacity="0.16"/><stop offset="1" stop-color="#6fb0a4" stop-opacity="0"/></radialGradient>
+<linearGradient id="u4s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d8f2e4" stop-opacity="0.5"/><stop offset="1" stop-color="#d8f2e4" stop-opacity="0"/></linearGradient>
+<filter id="u4f" x="-50%" y="-10%" width="200%" height="120%"><feGaussianBlur stdDeviation="29"/></filter>
+<radialGradient id="u4v" cx=".5" cy=".5" r=".75"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/></radialGradient>
+<filter id="u4g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.4 -.35"/></filter>
+</defs>
+<rect width="1600" height="900" fill="url(#u4a)"/>
+<rect width="1600" height="900" fill="url(#u4b)"/>
+<g filter="url(#u4f)"><path d="M912 0H1008L890 765H582Z" fill="url(#u4s)" opacity="0.28"/><path d="M1096 0H1144L1037 765H883Z" fill="url(#u4s)" opacity="0.16"/><path d="M780 0H820L608 765H480Z" fill="url(#u4s)" opacity="0.12"/></g>
+<rect width="1600" height="900" fill="url(#u4v)"/>
+<rect width="1600" height="900" filter="url(#u4g)" opacity=".08"/>
 </svg>

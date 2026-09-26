@@ -34,7 +34,18 @@ input, button, textarea, select {
 }
 button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
-html { -webkit-text-size-adjust: 100%; }
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  scrollbar-color: rgba(242, 243, 244, 0.28) var(--bg);
+}
+::selection { background: rgba(242, 243, 244, 0.88); color: #111214; }
+input, textarea { caret-color: var(--accent); }
+a { text-underline-offset: 0.3em; text-decoration-thickness: 1px; }
+/* Controls fire immediately on touch and never select their own labels. */
+button, a, [role="button"] { touch-action: manipulation; }
+button { user-select: none; -webkit-user-select: none; }
+button svg, a svg { flex: none; }
 
 /* ---------- Base body (dark only) ---------- */
 :root {
@@ -54,11 +65,14 @@ html { -webkit-text-size-adjust: 100%; }
   --accent-2:   #f2f3f4;
   --accent-ink: #101214;
 
+  /* motion: strong ease-out for responses, ease-in-out for on-screen movement */
+  --ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
   /* default font stacks shared across the collection pages */
   --ff-display: var(--font-dm-serif), Georgia, serif;
   --ff-serif:   var(--font-dm-serif), Georgia, serif;
   --ff-body:    var(--font-outfit), system-ui, -apple-system, sans-serif;
-  --ff-mono:    var(--font-jetbrains-mono), ui-monospace, 'SF Mono', Menlo, monospace;
 
   color-scheme: dark;
 }
@@ -85,7 +99,7 @@ img { color: transparent; }
   text-wrap: balance;
 }
 .mono {
-  font-family: var(--ff-mono);
+  font-family: var(--ff-body);
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -107,24 +121,27 @@ img { color: transparent; }
   gap: 10px;
   padding: 14px 26px;
   border-radius: 999px;
-  font-family: var(--ff-mono);
+  font-family: var(--ff-body);
   font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   font-weight: 500;
-  transition: transform 200ms ease, background 200ms ease, color 200ms ease, border-color 200ms ease;
+  transition: transform 160ms var(--ease-out), background 200ms ease, color 200ms ease, border-color 200ms ease;
   border: 1px solid transparent;
   background: transparent;
   white-space: nowrap;
 }
-.btn:hover { transform: translateY(-1px); }
-.btn:active { transform: translateY(0); }
+
+.btn:active { transform: scale(0.97); }
 
 .btn--primary {
   background: var(--accent);
   color: var(--accent-ink);
 }
-.btn--primary:hover { background: var(--accent-2); }
+@media (hover: hover) and (pointer: fine) {
+  .btn:hover { transform: translateY(-1px); }
+  .btn--primary:hover { background: var(--accent-2); }
+}
 
 /* ---------- Focus ---------- */
 :focus-visible {
@@ -142,7 +159,7 @@ img { color: transparent; }
   padding: 10px 16px;
   background: var(--accent);
   color: var(--accent-ink);
-  font-family: var(--ff-mono);
+  font-family: var(--ff-body);
   font-size: 12px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -179,8 +196,10 @@ img { color: transparent; }
 /* A photograph keeps its visual identity as it expands into the viewer. */
 :root[data-photo-transition]::view-transition-group(photo-focus) {
   animation-duration: 420ms;
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-timing-function: var(--ease-out);
 }
+/* Closing is the system responding, so it runs shorter than the opening. */
+:root[data-photo-transition="close"]::view-transition-group(photo-focus) { animation-duration: 300ms; }
 :root[data-photo-transition]::view-transition-old(root),
 :root[data-photo-transition]::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
 @media (prefers-reduced-motion: reduce) {
@@ -196,5 +215,5 @@ img { color: transparent; }
   [data-route-image="climbing"] { view-transition-name: route-climbing; }
   ::view-transition-group(route-portraits),
   ::view-transition-group(route-underwater),
-  ::view-transition-group(route-climbing) { animation-duration: 650ms; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+  ::view-transition-group(route-climbing) { animation-duration: 650ms; animation-timing-function: var(--ease-out); }
 }

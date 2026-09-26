@@ -1,4 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 1100">
-  <defs><linearGradient id="a" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#0d2b31"/><stop offset=".5" stop-color="#205250"/><stop offset="1" stop-color="#3c6e65"/></linearGradient></defs>
-  <rect width="1100" height="1100" fill="url(#a)"/><path d="M-80 670C240 440 390 850 670 575s420-170 560-50M-80 810c320-230 470 180 750-95s420-170 560-50" fill="none" stroke="#d0e2ca" stroke-opacity=".24" stroke-width="6"/><g fill="#e7d4a1" fill-opacity=".56"><circle cx="230" cy="256" r="10"/><circle cx="276" cy="205" r="5"/><circle cx="324" cy="145" r="7"/><circle cx="370" cy="100" r="4"/></g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 1100" role="img" aria-labelledby="u3t u3d">
+<title id="u3t">Underwater collection placeholder</title>
+<desc id="u3d">Abstract tonal placeholder, to be replaced with a selected photograph.</desc>
+<defs>
+<linearGradient id="u3a" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#27605f"/><stop offset="0.45" stop-color="#153f42"/><stop offset="1" stop-color="#061519"/></linearGradient>
+<radialGradient id="u3b" cx="0.5" cy="-.08" r=".7"><stop offset="0" stop-color="#bfe6d6" stop-opacity="0.5"/><stop offset="0.4" stop-color="#6fb0a4" stop-opacity="0.16"/><stop offset="1" stop-color="#6fb0a4" stop-opacity="0"/></radialGradient>
+<linearGradient id="u3s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d8f2e4" stop-opacity="0.5"/><stop offset="1" stop-color="#d8f2e4" stop-opacity="0"/></linearGradient>
+<filter id="u3f" x="-50%" y="-10%" width="200%" height="120%"><feGaussianBlur stdDeviation="20"/></filter>
+<radialGradient id="u3v" cx=".5" cy=".5" r=".75"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/></radialGradient>
+<filter id="u3g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.4 -.35"/></filter>
+</defs>
+<rect width="1100" height="1100" fill="url(#u3a)"/>
+<rect width="1100" height="1100" fill="url(#u3b)"/>
+<g filter="url(#u3f)"><path d="M462 0H572L693 935H341Z" fill="url(#u3s)" opacity="0.26"/></g>
+<rect width="1100" height="1100" fill="url(#u3v)"/>
+<rect width="1100" height="1100" filter="url(#u3g)" opacity=".08"/>
 </svg>

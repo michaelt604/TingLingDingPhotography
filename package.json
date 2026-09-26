@@ -9,7 +9,7 @@
   ],
   "overrides": {
     "postcss": "8.5.26",
-    "sharp": "0.35.3"
+    "sharp": "0.35.4"
   },
   "engines": {
     "node": ">=24"
@@ -30,13 +30,15 @@
     "test:contact-draft": "node tests/contact-draft-smoke.mjs",
     "test:instagram-defer": "node tests/instagram-defer-smoke.mjs",
     "test:instagram-top-quiet": "node tests/instagram-feed-top-quiet.mjs",
+    "test:latest-frames": "node tests/latest-frames-smoke.mjs",
     "test:cross-browser": "node tests/cross-browser-smoke.mjs",
-    "test:browser": "node tests/homepage-smoke.mjs && node tests/curated-gallery-smoke.mjs && node tests/motion-smoke.mjs && node tests/lightbox-smoke.mjs && node tests/instagram-embed-smoke.mjs && node tests/lightbox-fade-audit.mjs && node tests/grid-fade-audit.mjs && node tests/contact-draft-smoke.mjs && node tests/instagram-defer-smoke.mjs && node tests/instagram-feed-top-quiet.mjs",
+    "test:browser": "node tests/homepage-smoke.mjs && node tests/curated-gallery-smoke.mjs && node tests/motion-smoke.mjs && node tests/lightbox-smoke.mjs && node tests/instagram-embed-smoke.mjs && node tests/lightbox-fade-audit.mjs && node tests/grid-fade-audit.mjs && node tests/contact-draft-smoke.mjs && node tests/instagram-defer-smoke.mjs && node tests/instagram-feed-top-quiet.mjs && node tests/latest-frames-smoke.mjs",
     "typecheck": "tsc --noEmit && npm run typecheck --workspace=ig-proxy",
     "check": "npm run lint && npm test && npm run typecheck"
   },
   "dependencies": {
-    "next": "15.5.23",
+    "@phosphor-icons/react": "2.1.10",
+    "next": "15.5.26",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

@@ -2,11 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { X } from '@phosphor-icons/react/dist/ssr';
 import { Contact } from './Contact';
 import { lockBodyScroll } from './bodyScrollLock';
 import { useContact } from './ContactProvider';
 import { useDialogIsolation } from './dialogIsolation';
 import styles from './ContactModal.module.css';
+
+const EXIT_MS = 160;
 
 interface Props {
   open: boolean;
@@ -39,6 +42,16 @@ export function ContactModal({ open, onClose, side }: Props) {
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
   const [host, setHost] = useState<HTMLElement | null>(null);
   const { draft, setDraft } = useContact();
+  // Stays mounted briefly after close so the exit can play; focus and inert are released immediately.
+  const [mounted, setMounted] = useState(open);
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setMounted(false), EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   useEffect(() => {
     setHost(document.getElementById('dialog-host'));
@@ -126,12 +139,14 @@ export function ContactModal({ open, onClose, side }: Props) {
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open && !mounted) return null;
 
   const node = (
     <div
       className={styles.overlay}
       data-side={side === 'portraits' ? 'portrait' : side}
+      data-closing={open ? undefined : ''}
+      inert={!open}
       role="presentation"
     >
       <button
@@ -155,10 +170,7 @@ export function ContactModal({ open, onClose, side }: Props) {
           onClick={onClose}
           aria-label="Close contact form"
         >
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M18 6 6 18" />
-            <path d="m6 6 12 12" />
-          </svg>
+          <X size={20} aria-hidden />
         </button>
 
         <Contact

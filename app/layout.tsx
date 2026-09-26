@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { DM_Serif_Display, JetBrains_Mono, Outfit } from 'next/font/google';
+import { DM_Serif_Display, Outfit } from 'next/font/google';
 import { ContactProvider } from './components/ContactProvider';
 import './globals.css';
 
@@ -14,16 +14,11 @@ const outfit = Outfit({
   variable: '--font-outfit',
   display: 'swap',
 });
-const jetBrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-jetbrains-mono',
-  display: 'swap',
-});
 
 const siteUrl = 'https://tinglingdingphotography.com';
 const siteName = 'TingLingDing Photography';
 const siteDescription =
-  'TingLingDing — natural-light portraits, underwater photography, and climbing with friends.';
+  'Photography by Michael Ting: natural-light portraits, underwater photography, and climbing with friends.';
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -52,7 +47,7 @@ export const metadata: Metadata = {
         url: '/og-default.png',
         width: 1200,
         height: 630,
-        alt: 'TingLingDing Photography — portraits, underwater, and climbing',
+        alt: 'TingLingDing Photography: portraits, underwater, and climbing',
       },
     ],
   },
@@ -77,6 +72,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
+  interactiveWidget: 'resizes-content',
 };
 
 export default function RootLayout({
@@ -87,7 +83,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${dmSerif.variable} ${outfit.variable} ${jetBrainsMono.variable}`}
+      className={`${dmSerif.variable} ${outfit.variable}`}
     >
       <body>
         {/* Skip link — visible only when keyboard-focused, jumps past the sticky nav. */}

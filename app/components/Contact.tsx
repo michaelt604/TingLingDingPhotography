@@ -133,7 +133,7 @@ export function Contact({
       setStatus(okMessage);
     } catch {
       setCopyFallback(text);
-      setStatus('Copy was blocked — select the text below and copy it manually.');
+      setStatus('Copy was blocked. Select the text below and copy it manually.');
     }
   };
 
@@ -224,7 +224,7 @@ export function Contact({
               <button type="button" className={styles.copyButton} onClick={() => void copyText(CONTACT_EMAIL, 'Email address copied.')}>
                 Copy email
               </button>
-              <button type="button" className={styles.copyButton} onClick={() => void copyText(buildContactText({ name, email, timeframe, location, topic, message }), 'Inquiry copied — paste it into your email app.')}>
+              <button type="button" className={styles.copyButton} onClick={() => void copyText(buildContactText({ name, email, timeframe, location, topic, message }), 'Inquiry copied. Paste it into your email app.')}>
                 Copy inquiry
               </button>
             </div>

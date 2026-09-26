@@ -1,4 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 860">
-  <defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#244f4d"/><stop offset=".55" stop-color="#173a3c"/><stop offset="1" stop-color="#0b252b"/></linearGradient><radialGradient id="b" cx=".18" cy=".1" r=".8"><stop stop-color="#d6c494" stop-opacity=".46"/><stop offset="1" stop-color="#d6c494" stop-opacity="0"/></radialGradient></defs>
-  <rect width="1400" height="860" fill="url(#a)"/><rect width="1400" height="860" fill="url(#b)"/><path d="M-80 540C180 310 390 690 650 464s490-210 850 2M-80 650c260-230 470 150 730-76s490-210 850 2" fill="none" stroke="#b9d7c5" stroke-opacity=".25" stroke-width="5"/><g fill="#e6d9b1" fill-opacity=".64"><circle cx="225" cy="220" r="8"/><circle cx="270" cy="170" r="4"/><circle cx="320" cy="120" r="6"/></g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 860" role="img" aria-labelledby="u2t u2d">
+<title id="u2t">Underwater collection placeholder</title>
+<desc id="u2d">Abstract tonal placeholder, to be replaced with a selected photograph.</desc>
+<defs>
+<linearGradient id="u2a" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b6765"/><stop offset="0.45" stop-color="#153f42"/><stop offset="1" stop-color="#061519"/></linearGradient>
+<radialGradient id="u2b" cx="0.25" cy="-.08" r=".7"><stop offset="0" stop-color="#bfe6d6" stop-opacity="0.5"/><stop offset="0.4" stop-color="#6fb0a4" stop-opacity="0.16"/><stop offset="1" stop-color="#6fb0a4" stop-opacity="0"/></radialGradient>
+<linearGradient id="u2s" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d8f2e4" stop-opacity="0.5"/><stop offset="1" stop-color="#d8f2e4" stop-opacity="0"/></linearGradient>
+<filter id="u2f" x="-50%" y="-10%" width="200%" height="120%"><feGaussianBlur stdDeviation="25"/></filter>
+<radialGradient id="u2v" cx=".5" cy=".5" r=".75"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/></radialGradient>
+<filter id="u2g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.4 -.35"/></filter>
+</defs>
+<rect width="1400" height="860" fill="url(#u2a)"/>
+<rect width="1400" height="860" fill="url(#u2b)"/>
+<g filter="url(#u2f)"><path d="M266 0H350L694 731H426Z" fill="url(#u2s)" opacity="0.3"/><path d="M455 0H497L851 731H717Z" fill="url(#u2s)" opacity="0.18"/><path d="M147 0H189L403 731H269Z" fill="url(#u2s)" opacity="0.14"/></g>
+<rect width="1400" height="860" fill="url(#u2v)"/>
+<rect width="1400" height="860" filter="url(#u2g)" opacity=".08"/>
 </svg>

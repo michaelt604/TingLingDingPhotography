@@ -46,7 +46,7 @@ check('armed state gates initial fetch', TSX.includes('if (!feedArmed) return;')
 
 // 5. Stable section anchor + profile link render pre-load (before any fetch).
 check('stable section anchor id', TSX.includes('id="instagram"'));
-check('FeedHeader renders pre-load', TSX.includes('<FeedHeader handle={handle} profileUrl={profileUrl} side={side} />'));
+check('FeedHeader renders pre-load', TSX.includes('<FeedHeader handle={handle} profileUrl={profileUrl} />'));
 
 // 6. Existing lifecycle guards preserved.
 check('cancellation token preserved', TSX.includes('lifecycleTokenRef'));

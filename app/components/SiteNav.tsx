@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { EnvelopeSimple } from '@phosphor-icons/react/dist/ssr';
 import { useContact } from './ContactProvider';
 import styles from './SiteNav.module.css';
 
@@ -50,10 +51,7 @@ export function SiteNav({ current }: Props) {
           className={styles.cta}
           aria-label="Open contact form"
         >
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <rect x="2" y="4" width="20" height="16" rx="2" />
-            <path d="m22 7-10 6L2 7" />
-          </svg>
+          <EnvelopeSimple size={16} aria-hidden />
           <span>Get in touch</span>
         </button>
       </div>

@@ -53,6 +53,10 @@ async function runEngine(name) {
   }
   try {
     const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
+    // Never reach the live Worker from CI; an empty feed exercises the fallback.
+    await context.route('https://ig-proxy.michaelt604.workers.dev/**', (route) => route.fulfill({
+      status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: '{"data":[]}',
+    }));
     page = await context.newPage();
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));

@@ -46,6 +46,8 @@ async function assertContact(page, width) {
     return body.overflow === 'hidden' || body.position === 'fixed' || html.overflow === 'hidden';
   }), 'Contact locks background scroll');
   await page.keyboard.press('Escape');
+  assert.equal(await page.locator('[role="presentation"][data-closing]').count(), 1, 'Contact plays a short exit');
+  assert.ok(await page.evaluate(() => document.activeElement?.closest('[data-closing]') === null), 'Exiting contact never holds focus');
   await dialog.waitFor({ state: 'detached' });
   assert.ok(await trigger.evaluate((element) => document.activeElement === element), 'Contact restores focus');
 }
@@ -96,6 +98,8 @@ try {
   const motionPage = await motionContext.newPage();
   await motionPage.goto(SITE, { waitUntil: 'networkidle' });
   const panel = motionPage.locator('[data-photo-panel]').first();
+  await panel.scrollIntoViewIfNeeded();
+  await motionPage.waitForTimeout(1000);
   const bounds = await panel.boundingBox();
   await motionPage.mouse.move(bounds.x + bounds.width * 0.8, bounds.y + bounds.height * 0.7);
   assert.notEqual(await panel.evaluate((el) => el.style.getPropertyValue('--panel-x')), '', 'Pointer adds photo depth');

@@ -1,20 +1,22 @@
 # TingLingDing Photography
 
-Personal photography portfolio for **TingLingDing** — Underwater, Portraits,
-and Climbing, with curated galleries and secondary Instagram recent work. Built with **Next.js 15**,
-exported as a fully static site, and deployed to **Cloudflare Pages**.
+Personal portfolio for **TingLingDing** (Michael Ting): photography — Underwater, Portraits,
+and Climbing, with curated galleries and live Instagram recent work.
+Built with **Next.js 15**, exported as a fully static site, and deployed to **Cloudflare Pages**.
 
 ## Curated portfolio
 
-The redesigned portfolio uses labelled placeholder artwork until selected photographs
+The redesigned portfolio uses labelled tonal placeholder artwork until selected photographs
 are supplied. Collection order and image dimensions live in `app/collections.ts`.
+The homepage "Latest frames" strip loads recent posts from both Instagram feeds via the
+Worker when it nears the viewport.
 Photo uploading and storage are deferred; climbing does not need Instagram.
 Contact opens the visitor's email app for collaborations or getting in touch —
 no confirmation is sent or stored, and both footers show the direct-email fallback.
 
 After building, run the canonical browser suite `npm run test:browser`
 (homepage → curated-gallery → motion → lightbox → embed → lightbox-fade →
-grid-fade, plus focused contact-draft and instagram-defer regressions).
+grid-fade, plus focused contact-draft, instagram-defer and latest-frames regressions).
 `npm run test:cross-browser` covers the small Firefox/WebKit core-flow lane.
 Run browser scripts sequentially because they bind fixed localhost ports.
 Screenshots and logs are local under `preview/redesign/`.

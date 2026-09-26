@@ -1,4 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 860">
-  <defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#927e66"/><stop offset=".47" stop-color="#5d584c"/><stop offset="1" stop-color="#282c2a"/></linearGradient><linearGradient id="b" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#e3c992" stop-opacity=".6"/><stop offset="1" stop-color="#e3c992" stop-opacity="0"/></linearGradient></defs>
-  <rect width="1400" height="860" fill="url(#a)"/><path d="M0 675 235 400l135 112 260-308 184 220 286-250 300 165v521H0z" fill="#252a28" fill-opacity=".65"/><path d="M110 0h206L195 860H0zM616 0h160L676 860H460zM1100 0h240l-185 860H940z" fill="url(#b)" opacity=".74"/><path d="M760 860 790 592 880 464" fill="none" stroke="#f1eadc" stroke-opacity=".32" stroke-width="4" stroke-dasharray="10 14"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 860" role="img" aria-labelledby="c2t c2d">
+<title id="c2t">Climbing collection placeholder</title>
+<desc id="c2d">Abstract tonal placeholder, to be replaced with a selected photograph.</desc>
+<defs>
+<linearGradient id="c2a" x1="0.1" y1="0.05" x2="0.9" y2="1"><stop offset="0" stop-color="#8c8d8c"/><stop offset="0.5" stop-color="#4f5456"/><stop offset="1" stop-color="#1f2326"/></linearGradient>
+<radialGradient id="c2b" cx="0.1" cy="0.05" r=".8"><stop offset="0" stop-color="#f0c28c" stop-opacity="0.5"/><stop offset="0.45" stop-color="#c99a6c" stop-opacity="0.14"/><stop offset="1" stop-color="#c99a6c" stop-opacity="0"/></radialGradient>
+<linearGradient id="c2c" gradientUnits="userSpaceOnUse" x1="434" y1="237" x2="1260" y2="817"><stop offset="0" stop-color="#6c6c69"/><stop offset="0.35" stop-color="#3d4245"/><stop offset="1" stop-color="#15181b"/></linearGradient>
+<filter id="c2f" x="-5%" y="-5%" width="110%" height="110%"><feGaussianBlur stdDeviation="8"/></filter>
+<filter id="c2h" x="-10%" y="-10%" width="120%" height="120%"><feGaussianBlur stdDeviation="20"/></filter>
+<radialGradient id="c2v" cx=".5" cy=".5" r=".75"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/></radialGradient>
+<filter id="c2g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.4 -.35"/></filter>
+</defs>
+<rect width="1400" height="860" fill="url(#c2a)"/>
+<rect width="1400" height="860" fill="url(#c2b)"/>
+<path d="M0 473L868 0L1400 0L1400 860L0 860Z" fill="url(#c2c)" opacity=".92" filter="url(#c2f)"/>
+<path d="M0 473L868 0" stroke="#e9b57c" stroke-width="17" stroke-opacity=".38" filter="url(#c2h)"/>
+<rect width="1400" height="860" fill="url(#c2v)"/>
+<rect width="1400" height="860" filter="url(#c2g)" opacity=".08"/>
 </svg>

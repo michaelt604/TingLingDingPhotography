@@ -23,7 +23,7 @@
   text-transform: uppercase;
   transition: color 200ms;
 }
-.ig:hover { color: var(--accent); }
+
 
 .copy {
   font-family: var(--ff-body);
@@ -44,12 +44,17 @@
   letter-spacing: 0.08em;
   transition: color 200ms;
 }
-.email:hover { color: var(--accent); }
+
 
 .explore { margin-bottom: 40px; }
 .explore > p { color: var(--ink-mute); font-size: 13px; margin-bottom: 16px; }
 .exploreLinks { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .exploreLinks a { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; border-bottom: 1px solid var(--line); font-family: var(--ff-serif); font-size: clamp(26px, 4vw, 40px); color: var(--ink); }
-.exploreLinks a span { font-family: var(--ff-body); font-size: 22px; }
-.exploreLinks a:hover { border-color: var(--ink); }
+.exploreLinks a svg { font-size: 22px; color: var(--ink-soft); }
+
 @media (max-width: 480px) { .exploreLinks { grid-template-columns: 1fr; gap: 12px; } }
+
+@media (hover: hover) and (pointer: fine) {
+  .ig:hover, .email:hover { color: var(--accent); }
+  .exploreLinks a:hover { border-color: var(--ink); }
+}

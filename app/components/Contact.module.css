@@ -110,7 +110,6 @@ textarea.input { min-height: 140px; }
   color: var(--ink-mute);
   transition: color 200ms;
 }
-.direct:hover { color: var(--accent); }
 
 .status {
   min-height: 1.6em;
@@ -137,11 +136,18 @@ textarea.input { min-height: 140px; }
   text-transform: uppercase;
   transition: color 200ms, border-color 200ms;
 }
-.copyButton:hover {
-  color: var(--ink);
-  border-color: var(--ink);
-}
 
 .fallback {
   margin-top: 4px;
 }
+
+/* Hover only where a precise pointer can hover; touch keeps :active and focus feedback. */
+@media (hover: hover) and (pointer: fine) {
+  .direct:hover { color: var(--accent); }
+  .copyButton:hover {
+  color: var(--ink);
+  border-color: var(--ink); }
+}
+
+.copyButton { transition: color 200ms, border-color 200ms, transform 120ms var(--ease-out); }
+.copyButton:active, .submit:active { transform: scale(0.97); }

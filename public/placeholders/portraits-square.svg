@@ -1,4 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
-  <defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#cba57f"/><stop offset=".52" stop-color="#8c6952"/><stop offset="1" stop-color="#4b3b35"/></linearGradient><radialGradient id="b" cx=".72" cy=".18" r=".64"><stop stop-color="#f2d4a0" stop-opacity=".7"/><stop offset="1" stop-color="#f2d4a0" stop-opacity="0"/></radialGradient></defs>
-  <rect width="1000" height="1000" fill="url(#a)"/><rect width="1000" height="1000" fill="url(#b)"/><path d="M150 1000c42-218 165-336 350-336s315 118 350 336" fill="#332a28" fill-opacity=".78"/><ellipse cx="500" cy="390" rx="145" ry="205" fill="#d8b18b" fill-opacity=".7"/><path d="M350 388C334 220 420 125 526 130c132 6 174 120 137 271-28-77-72-111-151-116-63 16-113 55-162 103z" fill="#41362f" fill-opacity=".86"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-labelledby="p1t p1d">
+<title id="p1t">Portraits collection placeholder</title>
+<desc id="p1d">Abstract tonal placeholder, to be replaced with a selected photograph.</desc>
+<defs>
+<linearGradient id="p1a" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2b211c"/><stop offset="0.55" stop-color="#735140"/><stop offset="1" stop-color="#c29a74"/></linearGradient>
+<radialGradient id="p1b" cx="0.74" cy="0.22" r="0.62"><stop offset="0" stop-color="#f4dcb6" stop-opacity="0.55"/><stop offset="0.35" stop-color="#e0b98e" stop-opacity="0.22"/><stop offset="1" stop-color="#d9a878" stop-opacity="0"/></radialGradient>
+<radialGradient id="p1c" cx="0.2" cy="0.8" r="0.55"><stop offset="0" stop-color="#1b1411" stop-opacity="0.6"/><stop offset="1" stop-color="#1b1411" stop-opacity="0"/></radialGradient>
+<radialGradient id="p1e" cx="0.74" cy="0.22" r=".3"><stop offset="0" stop-color="#fff1d9" stop-opacity="0.2"/><stop offset="1" stop-color="#fff1d9" stop-opacity="0"/></radialGradient>
+<radialGradient id="p1v" cx=".5" cy=".5" r=".75"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/></radialGradient>
+<filter id="p1g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.4 -.35"/></filter>
+</defs>
+<rect width="1000" height="1000" fill="url(#p1a)"/>
+<rect width="1000" height="1000" fill="url(#p1c)"/>
+<rect width="1000" height="1000" fill="url(#p1b)"/>
+<rect width="1000" height="1000" fill="url(#p1e)"/>
+<rect width="1000" height="1000" fill="url(#p1v)"/>
+<rect width="1000" height="1000" filter="url(#p1g)" opacity=".08"/>
 </svg>

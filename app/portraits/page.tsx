@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { ArrowDown } from '@phosphor-icons/react/dist/ssr';
 import { CuratedGallery } from '../components/CuratedGallery';
 import { Footer } from '../components/Footer';
 import { InstagramFeed } from '../components/InstagramFeed';
@@ -37,7 +38,7 @@ export default function PortraitsPage() {
 					<p className={styles.description}>
 						Natural light, outdoor spaces, and the person in front of the camera. From open landscapes to city streets, I’m drawn to portraits that feel relaxed and true to the person.
 					</p>
-					<a className={styles.recentJump} href="#recent-work">Latest on Instagram <span aria-hidden="true">↓</span></a>
+					<a className={styles.recentJump} href="#recent-work">Latest on Instagram <ArrowDown aria-hidden /></a>
 				</header>
 				<p className={styles.placeholderNotice} data-placeholder-notice>
 					Placeholder artwork is used while selected photographs are being prepared.
@@ -47,7 +48,6 @@ export default function PortraitsPage() {
 				</div>
 				<section id="recent-work" className={styles.recent}>
 					<header className={styles.recentHeader}>
-						<p className={styles.recentKicker}>From the feed</p>
 						<h2 className={styles.recentTitle}>Recent work</h2>
 					</header>
 					<div className={styles.recentFeed}>

@@ -351,6 +351,24 @@ try {
     await viewer.waitFor({ state: 'detached' });
     await page.waitForFunction(() => !document.fullscreenElement);
     await page.waitForFunction(() => document.activeElement?.getAttribute('aria-label')?.startsWith('Open photograph 1 of 5'));
+    if (mode === 'native') {
+      // Fullscreen close is instant; a pointer close morphs back into the tile; Escape stays instant.
+      await trigger.click();
+      await viewer.waitFor();
+      await page.waitForFunction(() => !document.documentElement.hasAttribute('data-photo-transition'));
+      const beforeClose = await page.evaluate(() => window.__transitionCalls);
+      await viewer.getByRole('button', { name: 'Close photograph viewer', exact: true }).click();
+      await viewer.waitFor({ state: 'detached' });
+      assert.equal(await page.evaluate(() => window.__transitionCalls), beforeClose + 1, 'Pointer close morphs back to the tile');
+      await page.waitForFunction(() => !document.documentElement.hasAttribute('data-photo-transition'));
+      await trigger.click();
+      await viewer.waitFor();
+      await page.waitForFunction(() => !document.documentElement.hasAttribute('data-photo-transition'));
+      const beforeEscape = await page.evaluate(() => window.__transitionCalls);
+      await page.keyboard.press('Escape');
+      await viewer.waitFor({ state: 'detached' });
+      assert.equal(await page.evaluate(() => window.__transitionCalls), beforeEscape, 'Escape closes without animation');
+    }
     await context.close();
   }
   console.log('PASS native shared-image transition, fullscreen lifecycle, reduced-motion and unsupported fallback');
@@ -382,6 +400,18 @@ try {
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   }
   const original = await touchImage.getAttribute('src');
+  {
+    const box = await touchImage.boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - 40, y }] });
+    const wrap = touchPage.locator('[data-curated-viewer] [data-photo-zoom]');
+    assert.equal(await wrap.getAttribute('data-swiping'), '', 'Photo tracks the finger during a swipe');
+    assert.match(await wrap.evaluate((el) => el.style.transform), /translate3d\(-40px/, 'Swipe offset follows the finger 1:1');
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] });
+    assert.equal(await wrap.evaluate((el) => el.style.transform), '', 'Cancelled swipe snaps back');
+  }
   await swipe(100, 0);
   assert.equal(await touchImage.getAttribute('src'), original, 'Swipe stays bounded at first image');
   await swipe(-12, 0);

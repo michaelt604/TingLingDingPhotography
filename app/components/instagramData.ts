@@ -76,3 +76,18 @@ export function mergeInstagramPosts<T extends IGPost>(
     return normalizedRightTime - normalizedLeftTime || left.id.localeCompare(right.id);
   });
 }
+
+/** First caption line without hashtags or photo credits, for alt text and labels. */
+export function captionLabel(caption: string | undefined): string {
+  const line = (caption ?? '')
+    .split('\n')
+    .map((part) => part.replace(/#[\p{L}\p{N}_]+/gu, '').replace(/📸\s*:?.*$/u, '').trim())
+    .find((part) => part.length > 0 && !/^[-–—_.\s]+$/.test(part));
+  if (!line) return '';
+  return line.length > 90 ? `${line.slice(0, 87).trimEnd()}…` : line;
+}
+
+/** A still image for a post: videos need a thumbnail, since the media URL is a video file. */
+export function stillImageSource(post: IGPost): string | undefined {
+  return post.media_type === 'VIDEO' ? post.thumbnail_url : post.media_url;
+}

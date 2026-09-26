@@ -26,7 +26,7 @@
   color: var(--ink);
   transition: color 200ms;
 }
-.brand:hover { color: var(--accent); }
+
 .actions {
   display: inline-flex;
   align-items: center;
@@ -54,12 +54,9 @@
   text-transform: uppercase;
   color: var(--ink-soft);
   border: 1px solid var(--line);
-  transition: color 200ms, border-color 200ms, background 200ms;
+  transition: color 160ms, border-color 160ms, background 160ms, transform 140ms var(--ease-out);
 }
-.link:hover {
-  color: var(--ink);
-  border-color: var(--ink);
-}
+
 .link[aria-current='page'] {
   color: var(--ink);
   border-color: var(--accent);
@@ -71,24 +68,20 @@
   align-items: center;
   gap: 8px;
   min-height: 44px;
-  padding: 8px 14px;
+  padding: 8px 16px;
   border-radius: 999px;
   font-family: var(--ff-body);
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--accent-ink);
-  background: var(--accent);
-  border: 1px solid var(--accent);
-  transition: background 200ms, border-color 200ms, transform 200ms, color 200ms;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--line);
+  transition: background 200ms, border-color 200ms, transform 160ms var(--ease-out), color 200ms;
   font-weight: 500;
 }
-.cta:hover {
-  background: var(--accent-2);
-  border-color: var(--accent-2);
-  transform: translateY(-1px);
-}
-.cta:active { transform: translateY(0); }
+
+.cta:active, .link:active { transform: scale(0.97); }
 
 @media (max-width: 680px) {
   .nav {
@@ -117,4 +110,10 @@
 @media (max-width: 340px) {
   .nav { padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px)); }
   .link { padding-inline: 4px; font-size: 11px; }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .brand:hover { color: var(--accent); }
+  .link:hover { color: var(--ink); border-color: var(--ink); }
+  .cta:hover { border-color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
 }

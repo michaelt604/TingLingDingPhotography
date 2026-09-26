@@ -30,7 +30,7 @@
 .code {
   margin: 0;
   color: var(--ink);
-  font-family: var(--ff-mono);
+  font-family: var(--ff-body);
   font-size: clamp(64px, 14vw, 128px);
   letter-spacing: 0.04em;
   line-height: 1;
@@ -66,15 +66,15 @@
   border: 1px solid var(--line);
   border-radius: 999px;
   color: var(--ink);
-  font-family: var(--ff-mono);
+  font-family: var(--ff-body);
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   transition: color 200ms ease, border-color 200ms ease, background 200ms ease;
 }
-.link:hover { color: var(--ink); border-color: var(--ink); background: var(--line-soft); }
+
 .linkPrimary { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
-.linkPrimary:hover { color: var(--accent-ink); background: var(--accent-2); border-color: var(--accent-2); }
+
 .linkDot {
   display: inline-flex;
   flex: 0 0 auto;
@@ -91,4 +91,10 @@
 @media (max-width: 480px) {
   .actions { gap: 8px; }
   .link { padding: 10px 16px; font-size: 10px; }
+}
+
+/* Hover only where a precise pointer can hover; touch keeps :active and focus feedback. */
+@media (hover: hover) and (pointer: fine) {
+  .link:hover { color: var(--ink); border-color: var(--ink); background: var(--line-soft); }
+  .linkPrimary:hover { color: var(--accent-ink); background: var(--accent-2); border-color: var(--accent-2); }
 }

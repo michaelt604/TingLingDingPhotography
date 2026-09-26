@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowUpRight, CaretLeft, CaretRight, InstagramLogo } from "@phosphor-icons/react/dist/ssr";
 import Image from "next/image";
 import { createPortal } from "react-dom";
 import {
@@ -391,7 +392,7 @@ export function InstagramFeed({ handle, profileUrl, side }: Props) {
 			aria-label={`Latest posts from @${handle}`}
 		>
 			<div className="container">
-				<FeedHeader handle={handle} profileUrl={profileUrl} side={side} />
+				<FeedHeader handle={handle} profileUrl={profileUrl} />
 				{/* Deferred-load gate (R07). Watched by the arming observer with
 				a 600px rootMargin; renders pre-load alongside the header so the
 				anchor and profile link exist before any fetch fires. */}
@@ -1191,7 +1192,7 @@ function Lightbox({
 								onClick={handlePrev}
 								aria-label="Previous photo"
 							>
-								<span aria-hidden="true">‹</span>
+								<CaretLeft size={26} aria-hidden />
 							</button>
 						) : null}
 						{/* The prior full-screen image stays above the live image
@@ -1225,7 +1226,7 @@ function Lightbox({
 								onClick={handleNext}
 								aria-label="Next photo"
 							>
-								<span aria-hidden="true">›</span>
+								<CaretRight size={26} aria-hidden />
 							</button>
 						) : null}
 					</div>
@@ -1248,16 +1249,13 @@ function Lightbox({
 interface FeedHeaderProps {
 	handle: string;
 	profileUrl: string;
-	side: "underwater" | "portraits";
 }
 
-function FeedHeader({ handle, profileUrl, side }: FeedHeaderProps) {
-	const title = side === "underwater" ? "Underwater" : "Portraits";
+function FeedHeader({ handle, profileUrl }: FeedHeaderProps) {
 	return (
 		<header className={styles.head}>
 			<div className={styles.titleCopy}>
-				<span className={styles.kicker}>TingLingDing Photography</span>
-				<h3 className={`display ${styles.title}`}>{title}</h3>
+				<h3 className={styles.title}>@{handle}</h3>
 			</div>
 			<a
 				className={styles.follow}
@@ -1266,35 +1264,9 @@ function FeedHeader({ handle, profileUrl, side }: FeedHeaderProps) {
 				rel="noopener noreferrer"
 				aria-label={`Follow @${handle} on Instagram`}
 			>
-				<svg
-					viewBox="0 0 24 24"
-					width="18"
-					height="18"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="2"
-					aria-hidden="true"
-				>
-					<rect x="2" y="2" width="20" height="20" rx="5" />
-					<circle cx="12" cy="12" r="4" />
-					<circle cx="18" cy="6" r="1.2" fill="currentColor" />
-				</svg>
-				<span>Follow @{handle}</span>
-				<svg
-					viewBox="0 0 24 24"
-					width="14"
-					height="14"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="2"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-					aria-hidden="true"
-					className={styles.followArrow}
-				>
-					<path d="M7 17 17 7" />
-					<path d="M7 7h10v10" />
-				</svg>
+				<InstagramLogo size={18} aria-hidden />
+				<span>Follow</span>
+				<ArrowUpRight size={14} aria-hidden className={styles.followArrow} />
 			</a>
 		</header>
 	);

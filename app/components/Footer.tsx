@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { ArrowUpRight, InstagramLogo } from '@phosphor-icons/react/dist/ssr';
 import { CONTACT_EMAIL } from './contactMailto';
 import styles from './Footer.module.css';
 
@@ -33,7 +34,7 @@ export function Footer({ side, igHandle, igProfileUrl }: Props) {
                 { id: 'climbing', title: 'Climbing' },
               ].filter((item) => item.id !== side).map((item) => (
                 <Link key={item.id} href={`/${item.id}/`}>
-                  {item.title}<span aria-hidden="true">↗</span>
+                  {item.title}<ArrowUpRight aria-hidden />
                 </Link>
               ))}
             </div>
@@ -48,11 +49,7 @@ export function Footer({ side, igHandle, igProfileUrl }: Props) {
               rel="noopener noreferrer"
               aria-label={`Follow @${igHandle} on Instagram`}
             >
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <rect x="2" y="2" width="20" height="20" rx="5" />
-                <circle cx="12" cy="12" r="4" />
-                <circle cx="18" cy="6" r="1.2" fill="currentColor" />
-              </svg>
+              <InstagramLogo size={18} aria-hidden />
               @{igHandle}
             </a>
           )}

@@ -1,4 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 860">
-  <defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d4b18c"/><stop offset=".5" stop-color="#926f57"/><stop offset="1" stop-color="#4d4038"/></linearGradient><radialGradient id="b" cx=".68" cy=".2" r=".65"><stop stop-color="#f2d4a0" stop-opacity=".72"/><stop offset="1" stop-color="#f2d4a0" stop-opacity="0"/></radialGradient></defs>
-  <rect width="1400" height="860" fill="url(#a)"/><rect width="1400" height="860" fill="url(#b)"/><path d="M180 860c55-220 210-330 420-330s370 110 430 330" fill="#302a28" fill-opacity=".76"/><ellipse cx="600" cy="350" rx="145" ry="185" fill="#d8b18b" fill-opacity=".7"/><path d="M454 340C445 190 530 100 650 112c122 12 170 125 130 254-20-63-68-104-148-110-75 18-123 49-178 84z" fill="#41362f" fill-opacity=".87"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 860" role="img" aria-labelledby="p2t p2d">
+<title id="p2t">Portraits collection placeholder</title>
+<desc id="p2d">Abstract tonal placeholder, to be replaced with a selected photograph.</desc>
+<defs>
+<linearGradient id="p2a" x1="0" y1="0.5" x2="1" y2="0.5"><stop offset="0" stop-color="#291f1a"/><stop offset="0.55" stop-color="#7a5642"/><stop offset="1" stop-color="#c9a07a"/></linearGradient>
+<radialGradient id="p2b" cx="0.8" cy="0.4" r="0.55"><stop offset="0" stop-color="#f4dcb6" stop-opacity="0.55"/><stop offset="0.35" stop-color="#e0b98e" stop-opacity="0.22"/><stop offset="1" stop-color="#d9a878" stop-opacity="0"/></radialGradient>
+<radialGradient id="p2c" cx="0.18" cy="0.6" r="0.45"><stop offset="0" stop-color="#1b1411" stop-opacity="0.6"/><stop offset="1" stop-color="#1b1411" stop-opacity="0"/></radialGradient>
+<radialGradient id="p2e" cx="0.8" cy="0.4" r=".3"><stop offset="0" stop-color="#fff1d9" stop-opacity="0.2"/><stop offset="1" stop-color="#fff1d9" stop-opacity="0"/></radialGradient>
+<radialGradient id="p2v" cx=".5" cy=".5" r=".75"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/></radialGradient>
+<filter id="p2g" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1.4 -.35"/></filter>
+</defs>
+<rect width="1400" height="860" fill="url(#p2a)"/>
+<rect width="1400" height="860" fill="url(#p2c)"/>
+<rect width="1400" height="860" fill="url(#p2b)"/>
+<rect width="1400" height="860" fill="url(#p2e)"/>
+<rect width="1400" height="860" fill="url(#p2v)"/>
+<rect width="1400" height="860" filter="url(#p2g)" opacity=".08"/>
 </svg>

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  captionLabel,
   mergeInstagramPosts,
   normalizeInstagramPosts,
+  stillImageSource,
   type IGPost,
 } from '../app/components/instagramData.ts';
 import { getInstagramFeedDisplayState } from '../app/components/instagramFeedState.ts';
@@ -89,4 +91,20 @@ test('an empty initial page keeps pagination visible when a retry cursor exists'
       showPagination: true,
     },
   );
+});
+
+test('captionLabel keeps the first readable line without hashtags or credits', () => {
+  assert.equal(captionLabel('By the ocean 🌊 \n📸: tinglingdingportraits \n\n#model #editorial'), 'By the ocean 🌊');
+  assert.equal(captionLabel('📸: tinglingdingportraits \n\n#model #vancouvermodel'), '');
+  assert.equal(captionLabel('Starfish from Komodo.\n------\n#scuba'), 'Starfish from Komodo.');
+  assert.equal(captionLabel(undefined), '');
+  assert.equal(captionLabel('x'.repeat(120)).length, 88);
+});
+
+test('stillImageSource never returns a video file', () => {
+  const base = { id: '1', permalink: 'https://www.instagram.com/p/x/', timestamp: '2026-01-01T00:00:00+0000' };
+  const image = 'https://scontent.cdninstagram.com/a.jpg';
+  assert.equal(stillImageSource({ ...base, media_type: 'IMAGE', media_url: image }), image);
+  assert.equal(stillImageSource({ ...base, media_type: 'VIDEO', media_url: 'https://video.fbcdn.net/v.mp4' }), undefined);
+  assert.equal(stillImageSource({ ...base, media_type: 'VIDEO', media_url: 'https://video.fbcdn.net/v.mp4', thumbnail_url: image }), image);
 });
